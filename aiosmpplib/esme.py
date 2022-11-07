@@ -26,6 +26,7 @@ T = TypeVar('T') # For generic type hints
 # The message_payload parameter can hold up to 64k data, and we add a little more to that
 # to guard against an unlikely possibility of LimitOverrunError.
 _NETWORK_BUFFER_LIMIT = 2 ** 16 + 1024
+_EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
 
 class ESME:
@@ -189,7 +190,7 @@ class ESME:
                                                           SimpleSequenceGenerator())
         self.throttle_handler: BaseThrottleHandler = (throttle_handler or
                                                       SimpleThrottleHandler(logger=self._logger))
-        self.correlator: BaseCorrelator = correlator or SimpleCorrelator(self.hook)
+        self.correlator: BaseCorrelator = correlator or SimpleCorrelator(self._request_expired)
         self.retry_timer: BaseRetryTimer = retry_timer or SimpleExponentialBackoff()
         self.socket_timeout: float = socket_timeout
         self.interface_version: int = SMPP_VERSION_3_4
@@ -263,6 +264,12 @@ class ESME:
             raise
         body_data: bytes = await self._reader.readexactly(header.pdu_length - PDU_HEADER_LENGTH)
         return header_data + body_data, header
+
+    async def _request_expired(self, smpp_message: SmppMessage) -> None:
+        '''
+        Called by correlator when SubmitSm message expires before receivig response from SMSC.
+        '''
+        await self.hook.send_error(smpp_message, _EXPIRED_ERROR, self.client_id)
 
     async def _connection_keeper(self) -> None:
         '''
@@ -342,7 +349,7 @@ class ESME:
                            sequence_num=smpp_message.sequence_num)
 
         pdu: bytes = smpp_message.pdu()
-        await self.hook.to_smsc(smpp_message, pdu) # Call user's hook
+        await self.hook.sending(smpp_message, pdu, self.client_id) # Call user's hook
 
         # We use writer.drain() which is a flow control method that interacts with the
         # IO write buffer. When the size of the buffer reaches the high watermark,
@@ -390,7 +397,7 @@ class ESME:
                             self._logger.exception('SMPP message could not be sent',
                                                    **smpp_message.as_dict())
                         if isinstance(smpp_message, SubmitSm):
-                            await self.hook.send_error(smpp_message, err) # Call user's hook
+                            await self.hook.send_error(smpp_message, err, self.client_id)
                         # ValueError indicates problem with building the PDU, which is likely the
                         # result of invalid parameters passed by user application.
                         # Otherwise, it is a transport error and we must stop.
@@ -436,8 +443,8 @@ class ESME:
                     pdu_handler = self._handle_response
                 smpp_message: Optional[SmppMessage] = await pdu_handler(pdu, header)
 
-                self._logger.debug('Calling user hook', hook_method='from_smsc')
-                await self.hook.from_smsc(smpp_message, pdu)
+                self._logger.debug('Calling user hook', hook_method='received')
+                await self.hook.received(smpp_message, pdu, self.client_id)
 
                 if header.smpp_command in COMMAND_RESPONSE_MAP:
                     # This is a request, we need to respond
@@ -633,7 +640,7 @@ class ESME:
         pdu: bytes
         header: PduHeader
         pdu, header = await self._socket_operation(self._get_pdu())
-        await self.hook.from_smsc(BindTransceiverResp.from_pdu(pdu, header), pdu)
+        await self.hook.received(BindTransceiverResp.from_pdu(pdu, header), pdu, self.client_id)
         # ESME_RALYBND means that the client is already bound.
         # This should not happen, but we cover it just in case.
         if header.command_status not in (SmppCommandStatus.ESME_ROK,
@@ -699,7 +706,7 @@ class ESME:
 
             self._bound.clear()
             self._session_state = SmppSessionState.CLOSED
-            self._logger.error(error_message, exc_info=conn_error)
+            self._logger.error(error_message, exception=repr(conn_error))
             if self._is_shutting_down:
                 break
             if conn_error and self._logger.isEnabledFor(INFO):

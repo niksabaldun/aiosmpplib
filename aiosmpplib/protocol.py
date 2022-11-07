@@ -1,5 +1,5 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from codecs import CodecInfo
 from datetime import datetime, timedelta
 from math import floor
@@ -18,13 +18,29 @@ PDU_HEADER_LENGTH: int = 16
 SMPP_VERSION_3_4: int = 0x34
 
 
+class Trackable(metaclass=ABCMeta):
+    @classmethod
+    def __subclasshook__(cls, subclass):
+        return (hasattr(subclass, 'log_id') and  not callable(subclass.log_id) and
+                hasattr(subclass, 'extra_data') and  not callable(subclass.extra_data))
+
+    @property
+    @abstractmethod
+    def log_id(self):
+        raise NotImplementedError()
+
+    @property
+    @abstractmethod
+    def extra_data(self):
+        raise NotImplementedError()
+
+
 class SmppMessage(ABC):
     '''
-    The message protocol for `aiosmpplib`. It is the code representation of what
-    gets queued into a aiosmpplib broker.
-    This is the interface that must be implemented to satisfy aiosmpplib message protocol.
+    Represents the SMPP protocol message interface.
 
-    Users should only ever have to deal with the :class:`SubmitSm <SubmitSm>` implementation
+    Users should only have to deal with the :class:`SubmitSm <SubmitSm>` and
+    :class:`DeliverSm <DeliverSm>` implementations.
     '''
 
     def __init__(self, sequence_num: int,
@@ -465,6 +481,7 @@ class SmResp(SmppMessage):
         return cls(header.sequence_num, header.command_status, message_id)
 
 
+@Trackable.register
 class SubmitSm(Sm):
     '''
     The code representation of the `submit_sm` pdu that will get queued into a broker.
@@ -519,6 +536,7 @@ class SubmitSm(Sm):
         return SmppCommand.SUBMIT_SM
 
 
+@Trackable.register
 class SubmitSmResp(SmResp):
     def __init__(self, sequence_num: int,
                  command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK, message_id: str='',
@@ -538,6 +556,7 @@ class SubmitSmResp(SmResp):
         return SmppCommand.SUBMIT_SM_RESP
 
 
+@Trackable.register
 class DeliverSm(Sm):
     def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
                  service_type: str='CMT', esm_class: int=0b00000000, protocol_id: int=0x00000000,
@@ -655,6 +674,7 @@ class DeliverSmResp(SmResp):
         return SmppCommand.DELIVER_SM_RESP
 
 
+@Trackable.register
 class GenericNack(SmppMessage):
     def __init__(self, sequence_num: int,
                  command_status: SmppCommandStatus=SmppCommandStatus.ESME_RUNKNOWNERR,

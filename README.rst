@@ -33,6 +33,7 @@ Quick start
 
 .. code-block:: python
 
+    import asyncio
     from aiosmpplib import ESME, PhoneNumber, SubmitSm
     from aiosmpplib.log import INFO
 
@@ -93,8 +94,8 @@ Your application interacts with ESME via three interfaces: broker, correlator an
   subclass **BaseCorrelator** and also override ``get`` and ``put`` methods.
 * Hook is an interface with three async methods:
 
-  * ``to_smsc``: Called before sending any message to SMSC.
-  * ``from_smsc``: Called after receiving any message from SMSC.
+  * ``sending``: Called before sending any message to SMSC.
+  * ``received``: Called after receiving any message from SMSC.
   * ``send_error``: Called if error occured while sending a SubmitSm.
 
   Subclass **BaseHook** and implement all three methods. The latter two are essential for
@@ -102,7 +103,7 @@ Your application interacts with ESME via three interfaces: broker, correlator an
 
 Incoming message flow
 _____________________
-Receiving messages is straightforward. The ``from_smsc`` hook will be called. If the
+Receiving messages is straightforward. The ``received`` hook will be called. If the
 ``smpp_message`` parameter is of type **DeliverSm** and its ``receipt`` member is ``None``,
 it is an incoming SMS. Store it as appropriate.
 
@@ -124,7 +125,7 @@ Sending messages is a lot more involved.
 
    Whichever error occured, the message will not be re-sent automatically.
    User application must implement retry mechanism, if required.
-4. If the SMSC does respond, check the response in ``from_smsc`` hook.
+4. If the SMSC does respond, check the response in ``received`` hook.
    The ``smpp_message`` parameter will be either:
 
    * **SubmitSmResp** - If ``command_status`` member is anything other than
@@ -133,7 +134,7 @@ Sending messages is a lot more involved.
 
    Again, if the message was rejected, it will not be re-sent automatically.
 5. If the request was accepted, a delivery receipt should arrive after some time.
-   In ``from_smsc`` hook, look for **DeliverSm** message whose ``receipt`` member is not ``None``.
+   In ``received`` hook, look for **DeliverSm** message whose ``receipt`` member is not ``None``.
    Receipt is a dictionary whose structure is SMSC-specific,
    but it usually has the following items:
    

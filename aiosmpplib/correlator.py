@@ -1,7 +1,6 @@
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Tuple
-from .hook import BaseHook
+from typing import Awaitable, Callable, Dict, Optional, Tuple
 from .protocol import SmppMessage, SubmitSm
 from .state import SmppCommand
 from .utils import check_param
@@ -11,7 +10,8 @@ class BaseCorrelator(ABC):
     '''
     Interface that must be implemented to satisfy aiosmpplib Correlator.
     User implementations should inherit this class and
-    implement the :func:`get <BaseCorrelator.get>` and :func:`put <BaseCorrelator.put>` methods.
+    implement the :func:`get <BaseCorrelator.get>`, :func:`put <BaseCorrelator.put>`,
+    :func:`get <BaseCorrelator.get_delivery>` and :func:`put <BaseCorrelator.put_delivery>` methods.
 
     A Correlator is class that is used to store relations between SMPP requests and replies.
     Correlation is based on sequence number, and optionally message type,
@@ -21,21 +21,19 @@ class BaseCorrelator(ABC):
     This correlation is based on message_id provided by SMSC.
     Delivery receipt may arrive days after sending, so this correlation should be persisted.
 
-    User application provides log_id and optionally extra_data
+    User application provides log_id and optionally extra_data,
     which it can use for its own correlation.
 
     SubmitSm Correlation is based on message ID received in delivery report, which can
     either be in receipted_message_id optional parameter or in message text.
-
     '''
-    def __init__(self, hook: BaseHook) -> None:
+
+    def __init__(self, error_callback: Callable[[SmppMessage], Awaitable[None]]) -> None:
         '''
         Parameters:
-            hook: A BaseHook instance neede to inform user application about expired
-                  correlations regarding SubmitSm messages
+            error_callback: A method which will be called when SubmitSm correlation data expires.
         '''
-        check_param(hook, 'hook', BaseHook)
-        self.hook: BaseHook = hook
+        self.error_callback: Callable[[SmppMessage], Awaitable[None]] = error_callback
 
     @abstractmethod
     async def put(self, smpp_message: SmppMessage) -> None:
@@ -116,17 +114,15 @@ class SimpleCorrelator(BaseCorrelator):
        }
     '''
 
-    _EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
-
-    def __init__(self, hook: BaseHook, max_ttl: float=15.00) -> None:
+    def __init__(self, error_callback: Callable[[SmppMessage], Awaitable[None]],
+                 max_ttl: float=15.00) -> None:
         '''
         Parameters:
-            hook: A BaseHook instance neede to inform user application about expired
-                  correlations regarding SubmitSm messages
+            error_callback: A method which will be called when SubmitSm correlation data expires.
             max_ttl: The time in seconds that an item is going to be stored.
                      After the expiration of max_ttl seconds, that item will be deleted.
         '''
-        super().__init__(hook)
+        super().__init__(error_callback)
         check_param(max_ttl, 'max_ttl', float)
         if max_ttl < 1.00:
             raise ValueError(f'Parameter max_ttl ({max_ttl}) must not be smaller than 1 second.')
@@ -171,7 +167,7 @@ class SimpleCorrelator(BaseCorrelator):
             if now - stored_at > self.max_ttl:
                 del self._store[sequence_num]
                 if isinstance(message, SubmitSm):
-                    await self.hook.send_error(message, self._EXPIRED_ERROR)
+                    await self.error_callback(message)
 
         if any(now - value[0] > self.max_ttl for value in self._delivery_store.values()):
             self._delivery_store = {key: value for key, value in self._delivery_store.items()
