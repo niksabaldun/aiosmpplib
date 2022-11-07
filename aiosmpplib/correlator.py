@@ -1,9 +1,13 @@
 import time
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
+from .hook import BaseHook
 from .protocol import SmppMessage, SubmitSm
 from .state import SmppCommand
 from .utils import check_param
+
+
+_EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
 
 class BaseCorrelator(ABC):
@@ -28,12 +32,20 @@ class BaseCorrelator(ABC):
     either be in receipted_message_id optional parameter or in message text.
     '''
 
-    def __init__(self, error_callback: Callable[[SmppMessage], Awaitable[None]]) -> None:
+    # Parent MUST set these properties before use
+    hook: BaseHook = None  # type: ignore
+    client_id: str = None  # type: ignore
+
+    async def expired(self, smpp_message: SmppMessage) -> None:
         '''
+        Correlator implementation MUST call this method whenever correlation data expires
+        before receiving a response from SMPP peer.
+
         Parameters:
-            error_callback: A method which will be called when SubmitSm correlation data expires.
+            smpp_message: Protocol message whose correlation data has expired.
         '''
-        self.error_callback: Callable[[SmppMessage], Awaitable[None]] = error_callback
+        if isinstance(smpp_message, SubmitSm):
+            await self.hook.send_error(smpp_message, _EXPIRED_ERROR, self.client_id)
 
     @abstractmethod
     async def put(self, smpp_message: SmppMessage) -> None:
@@ -114,15 +126,12 @@ class SimpleCorrelator(BaseCorrelator):
        }
     '''
 
-    def __init__(self, error_callback: Callable[[SmppMessage], Awaitable[None]],
-                 max_ttl: float=15.00) -> None:
+    def __init__(self, max_ttl: float=15.00) -> None:
         '''
         Parameters:
-            error_callback: A method which will be called when SubmitSm correlation data expires.
             max_ttl: The time in seconds that an item is going to be stored.
                      After the expiration of max_ttl seconds, that item will be deleted.
         '''
-        super().__init__(error_callback)
         check_param(max_ttl, 'max_ttl', float)
         if max_ttl < 1.00:
             raise ValueError(f'Parameter max_ttl ({max_ttl}) must not be smaller than 1 second.')
@@ -166,8 +175,7 @@ class SimpleCorrelator(BaseCorrelator):
             stored_at, message = self._store[sequence_num]
             if now - stored_at > self.max_ttl:
                 del self._store[sequence_num]
-                if isinstance(message, SubmitSm):
-                    await self.error_callback(message)
+                await self.expired(message)
 
         if any(now - value[0] > self.max_ttl for value in self._delivery_store.values()):
             self._delivery_store = {key: value for key, value in self._delivery_store.items()

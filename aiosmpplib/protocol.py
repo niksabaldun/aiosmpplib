@@ -1,5 +1,5 @@
 from __future__ import annotations
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from codecs import CodecInfo
 from datetime import datetime, timedelta
 from math import floor
@@ -18,21 +18,20 @@ PDU_HEADER_LENGTH: int = 16
 SMPP_VERSION_3_4: int = 0x34
 
 
-class Trackable(metaclass=ABCMeta):
-    @classmethod
-    def __subclasshook__(cls, subclass):
-        return (hasattr(subclass, 'log_id') and  not callable(subclass.log_id) and
-                hasattr(subclass, 'extra_data') and  not callable(subclass.extra_data))
+class Trackable(ABC):
+    @property
+    @abstractmethod
+    def log_id(self) -> str:
+        '''
+        :return: A unique identifier of original request
+        '''
 
     @property
     @abstractmethod
-    def log_id(self):
-        raise NotImplementedError()
-
-    @property
-    @abstractmethod
-    def extra_data(self):
-        raise NotImplementedError()
+    def extra_data(self) -> str:
+        '''
+        :return: A unique identifier of original request
+        '''
 
 
 class SmppMessage(ABC):
@@ -116,10 +115,13 @@ class SmppMessage(ABC):
         return cls(header.sequence_num, header.command_status)
 
 
-class Sm(SmppMessage):
+class Sm(SmppMessage, Trackable):
     '''
     SubmitSm and DeliverSm have identical structure, so they share the same parent class.
     '''
+
+    log_id: str
+    extra_data: str
 
     def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
                  service_type: str, esm_class: int, protocol_id: int, priority_flag:int,
@@ -216,8 +218,8 @@ class Sm(SmppMessage):
         self.optional_params: Sequence[OptionalParam] = optional_params
         self.auto_message_payload: bool = auto_message_payload
         self.error_handling: str = error_handling
-        self.log_id: str = log_id
-        self.extra_data: str = extra_data
+        self.log_id = log_id
+        self.extra_data = extra_data
         # default_encoding and custom_codecs need to be set by ESME/SMSC before sending
         self._default_encoding: str = ''
         self._custom_codecs: Optional[Dict[str, CodecInfo]] = None
@@ -481,7 +483,6 @@ class SmResp(SmppMessage):
         return cls(header.sequence_num, header.command_status, message_id)
 
 
-@Trackable.register
 class SubmitSm(Sm):
     '''
     The code representation of the `submit_sm` pdu that will get queued into a broker.
@@ -536,8 +537,10 @@ class SubmitSm(Sm):
         return SmppCommand.SUBMIT_SM
 
 
-@Trackable.register
-class SubmitSmResp(SmResp):
+class SubmitSmResp(SmResp, Trackable):
+    log_id: str
+    extra_data: str
+
     def __init__(self, sequence_num: int,
                  command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK, message_id: str='',
                  log_id: str='', extra_data: str='') -> None:
@@ -548,15 +551,14 @@ class SubmitSmResp(SmResp):
         '''
         super().__init__(sequence_num, command_status, message_id)
         # Params are not checked as this message is not supposed to be created by user directly
-        self.log_id: str = log_id
-        self.extra_data: str = extra_data
+        self.log_id = log_id
+        self.extra_data = extra_data
 
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.SUBMIT_SM_RESP
 
 
-@Trackable.register
 class DeliverSm(Sm):
     def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
                  service_type: str='CMT', esm_class: int=0b00000000, protocol_id: int=0x00000000,
@@ -674,8 +676,10 @@ class DeliverSmResp(SmResp):
         return SmppCommand.DELIVER_SM_RESP
 
 
-@Trackable.register
-class GenericNack(SmppMessage):
+class GenericNack(SmppMessage, Trackable):
+    log_id: str
+    extra_data: str
+
     def __init__(self, sequence_num: int,
                  command_status: SmppCommandStatus=SmppCommandStatus.ESME_RUNKNOWNERR,
                  log_id: str='', extra_data: str='') -> None:
@@ -687,8 +691,8 @@ class GenericNack(SmppMessage):
             extra_data: A custom string associated with original SubmitSm request.
         '''
         super().__init__(sequence_num, command_status)
-        self.log_id: str = log_id
-        self.extra_data: str = extra_data
+        self.log_id = log_id
+        self.extra_data = extra_data
 
     @property
     def smpp_command(self) -> SmppCommand:

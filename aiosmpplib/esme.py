@@ -26,7 +26,6 @@ T = TypeVar('T') # For generic type hints
 # The message_payload parameter can hold up to 64k data, and we add a little more to that
 # to guard against an unlikely possibility of LimitOverrunError.
 _NETWORK_BUFFER_LIMIT = 2 ** 16 + 1024
-_EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
 
 class ESME:
@@ -190,7 +189,9 @@ class ESME:
                                                           SimpleSequenceGenerator())
         self.throttle_handler: BaseThrottleHandler = (throttle_handler or
                                                       SimpleThrottleHandler(logger=self._logger))
-        self.correlator: BaseCorrelator = correlator or SimpleCorrelator(self._request_expired)
+        self.correlator: BaseCorrelator = correlator or SimpleCorrelator()
+        self.correlator.hook = self.hook
+        self.correlator.client_id = self.client_id
         self.retry_timer: BaseRetryTimer = retry_timer or SimpleExponentialBackoff()
         self.socket_timeout: float = socket_timeout
         self.interface_version: int = SMPP_VERSION_3_4
@@ -264,12 +265,6 @@ class ESME:
             raise
         body_data: bytes = await self._reader.readexactly(header.pdu_length - PDU_HEADER_LENGTH)
         return header_data + body_data, header
-
-    async def _request_expired(self, smpp_message: SmppMessage) -> None:
-        '''
-        Called by correlator when SubmitSm message expires before receivig response from SMSC.
-        '''
-        await self.hook.send_error(smpp_message, _EXPIRED_ERROR, self.client_id)
 
     async def _connection_keeper(self) -> None:
         '''
