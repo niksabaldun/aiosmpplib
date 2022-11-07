@@ -6,7 +6,6 @@ Inspired by `naz`_ library by Komu Wairagu. Initial intention was to add missing
 to existing library. But in the end, the code has been almost completely rewritten and released
 as a separate library.
 
-::
     SMPP is a protocol designed for the transfer of short message data between External Short
     Messaging Entities(ESMEs), Routing Entities(REs) and Short Message Service Center(SMSC).
     - `Wikipedia <https://en.wikipedia.org/wiki/Short_Message_Peer-to-Peer>`_
@@ -82,7 +81,7 @@ Your application interacts with ESME via three interfaces: broker, correlator an
   only makes sense for **SubmitSm** (outgoing SMS). Subclass **BaseBroker** in order to put and
   get messages from persistent storage. The library provides ``json_encode`` and ``json_decode``
   convenience methods which can be used to convert messages to/from JSON. Again, while any message
-  can be JSON-encoded, it probably only makes sense for **SubmitSm**, and possibly **DeliverSm**.
+  can be serialized, it probably only makes sense for **SubmitSm**, and possibly **DeliverSm**.
 * Correlator is an interface that does two types of correlation:
 
   * Outgoing SMPP requests are correlated with received responses.
@@ -153,16 +152,18 @@ Sending messages is a lot more involved.
    
    The ``stat`` parameter should have one the following values:
 
-   * DELIVRD # Message is delivered to destination.
-   * EXPIRED # Message validity period has expired.
-   * DELETED # Message has been deleted.
-   * UNDELIV # Message is undeliverable.
-   * ACCEPTD # Message is in accepted state.
-   * UNKNOWN # Message is in invalid state.
-   * REJECTD # Message is in a rejected state.
+   * ``DELIVRD`` - Message is delivered to destination.
+   * ``EXPIRED`` - Message validity period has expired.
+   * ``DELETED`` - Message has been deleted.
+   * ``UNDELIV`` - Message is undeliverable.
+   * ``ACCEPTD`` - Message is in accepted state.
+   * ``UNKNOWN`` - Message is in invalid state.
+   * ``REJECTD`` - Message is in a rejected state.
 
    For more details, check `SMPP specification <https://smpp.org/SMPP_v3_4_Issue1_2.pdf>`_.
 
 Bug Reporting
 -------------
 Bug reports and feature requests are welcome via `Github issues`_.
+
+.. _Github issues: https://github.com/niksabaldun/aiosmpplib/issues
