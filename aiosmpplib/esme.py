@@ -174,7 +174,7 @@ class ESME:
         self.testing: bool = testing
         if log_metadata is None:
             log_metadata = {
-                'smsc_host': self.smsc_host,
+                'smsc_host': smsc_host,
                 'system_id': system_id,
                 'client_id': self.client_id,
                 'pid': os.getpid(),
@@ -335,10 +335,6 @@ class ESME:
             sequence_num: int = self.sequence_generator.next_sequence()
             assert_valid_sequence(sequence_num)
             smpp_message.sequence_num = sequence_num
-            self._logger.debug('Saving request correlation data',
-                                smpp_command=smpp_message.smpp_command,
-                                sequence_num=sequence_num)
-            await self.correlator.put(smpp_message)
 
         self._logger.debug('Sending SMPP message', smpp_command=smpp_message.smpp_command.name,
                            sequence_num=smpp_message.sequence_num)
@@ -360,6 +356,13 @@ class ESME:
 
         self._logger.debug('Sent SMPP message', smpp_command=smpp_message.smpp_command.name,
                            sequence_num=smpp_message.sequence_num)
+
+        if smpp_message.smpp_command in COMMAND_RESPONSE_MAP:
+            # If no error occured, save correlation data
+            self._logger.debug('Saving request correlation data',
+                                smpp_command=smpp_message.smpp_command,
+                                sequence_num=smpp_message.sequence_num)
+            await self.correlator.put(smpp_message)
 
     async def _dequeue_messages(self) -> Dict:
         '''
