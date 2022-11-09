@@ -35,7 +35,7 @@ Quick start
 
     import asyncio
     from aiosmpplib import ESME, PhoneNumber, SubmitSm
-    from aiosmpplib.log import INFO
+    from aiosmpplib.log import DEBUG
 
     async def main():
         # Create ESME instance.
@@ -43,8 +43,8 @@ Quick start
             smsc_host='127.0.0.1',
             smsc_port=2775,
             system_id='test',
-            password='test,
-            log_level=INFO,
+            password='test',
+            log_level=DEBUG,
         )
 
         # Queue messages to send.
