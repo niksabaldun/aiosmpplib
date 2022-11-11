@@ -73,6 +73,12 @@ class SmppMessage(Base):
 
     @staticmethod
     def parse_header(header_data: bytes) -> PduHeader:
+        '''
+        Parses PDU header and returns PduHeader object.
+
+        Parameters:
+            header_data: A byte sequence containing header data. Must be at least 16 bytes long.
+        '''
         # First 16 bytes always contain:
         # PDU length, command ID, status, and sequence number, 4 bytes each
         pdu_length: int = unpack_from('!I', header_data)[0]
@@ -110,8 +116,8 @@ class SmppMessage(Base):
         Parameters:
             pdu: PDU in bytes that have been read from network
             header: PduHeader instance containing data parsed from PDU header
-            default_encoding: SMPP default encoding (only needed for DeliverSm)
-            custom_codecs: User-defined codecs (only needed for DeliverSm)
+            default_encoding: SMPP default encoding (only needed for SubmitSm/DeliverSm)
+            custom_codecs: User-defined codecs (only needed for SubmitSm/DeliverSm)
         '''
         # pylint: disable=unused-argument
         # Many messages have empty body, so this is a default
@@ -134,21 +140,20 @@ class SubmitSm(Trackable, SmppMessage):
         schedule_delivery_time: Time at which the message delivery should be first attempted.
         validity_period: The validity period of this message.
         registered_delivery: Indicator to signify if an SMSC delivery receipt
-                                or an SME acknowledgement is required.
+                             or an SME acknowledgement is required.
         replace_if_present_flag: Flag indicating if submitted message should replace
-                                    an existing message.
-                            ('canned') short messages stored on the SMSC
+                                 an existing message. ('canned') short messages stored on the SMSC
         encoding: `encoding <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
-                    used to encode messages been sent to SMSC. The encoding should be one of
-                    the encodings recognised by the SMPP specification. See section 5.2.19 of
-                    SMPP spec. If you want to use your own custom codec implementation for an
-                    encoding, make sure to pass it to
-                    :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
+                  used to encode messages been sent to SMSC. The encoding should be one of
+                  the encodings recognised by the SMPP specification. See section 5.2.19 of
+                  SMPP spec. If you want to use your own custom codec implementation for an
+                  encoding, make sure to pass it to
+                  :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
         sm_default_msg_id: Indicates the short message to send from a list of predefined
         message_payload: Optional parameter message_payload, needs special handling
         optional_params: List of optional parameters, if any
         auto_message_payload: Automatically use message_payload if message
-                                does not fit in short_message
+                              does not fit in short_message
         error_handling: same meaning as the `errors` argument to Python's
                         `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
                         method
@@ -218,6 +223,12 @@ class SubmitSm(Trackable, SmppMessage):
 
     @staticmethod
     def datetime_to_smpp_time(time_object: Optional[Union[datetime, timedelta]]) -> str:
+        '''
+        Converts Python time object to SMPP time format.
+
+        Parameters:
+            time_object: A datetime or timedelta instance.
+        '''
         if time_object is None:
             return ''
         if isinstance(time_object, datetime):
@@ -251,27 +262,33 @@ class SubmitSm(Trackable, SmppMessage):
             minutes: str = two_digit_format.format(total_seconds // 60)
             seconds: str = two_digit_format.format(total_seconds % 60)
             return years + months + days + hours + minutes + seconds + '000R'
-        raise ValueError('Only datetime and timedelta objects can be converted to SMPP validity')
+        raise ValueError('Only datetime and timedelta objects can be converted to SMPP format')
 
     @staticmethod
-    def smpp_time_to_datetime(validity: str) -> Optional[Union[datetime, timedelta]]:
-        if not validity:
+    def smpp_time_to_datetime(smpp_time: str) -> Optional[Union[datetime, timedelta]]:
+        '''
+        Converts string in SMPP time format to Python time object.
+
+        Parameters:
+            smpp_time: A string in SMPP time format.
+        '''
+        if not smpp_time:
             return None
-        year: int = int(validity[0:2])
-        month: int = int(validity[2:4])
-        day: int = int(validity[4:6])
-        hour: int = int(validity[6:8])
-        minute: int = int(validity[8:10])
-        second: int = int(validity[10:12])
-        if validity.endswith('R'):
+        year: int = int(smpp_time[0:2])
+        month: int = int(smpp_time[2:4])
+        day: int = int(smpp_time[4:6])
+        hour: int = int(smpp_time[6:8])
+        minute: int = int(smpp_time[8:10])
+        second: int = int(smpp_time[10:12])
+        if smpp_time.endswith('R'):
             # Relative validity, convert to timedelta
             # For simplicity, year = 365 days, month = 30 days
             total_days: int = year * 365 + month * 30 + day
             total_seconds: int = hour * 3600 + minute * 60 + second
             return timedelta(days=total_days, seconds=total_seconds)
         # Absolute validity, convert to datetime
-        tenth_second: int = int(validity[12:13])
-        offset_str: str = validity[15:16] + validity[13:15]
+        tenth_second: int = int(smpp_time[12:13])
+        offset_str: str = smpp_time[15:16] + smpp_time[13:15]
         offset: FixedOffset = FixedOffset.from_timezone(offset_str)
         return datetime(
             year=year,
@@ -286,10 +303,23 @@ class SubmitSm(Trackable, SmppMessage):
 
     def set_encoding_info(self, default_encoding: str,
                           custom_codecs: Optional[Dict[str, CodecInfo]]) -> None:
+        '''
+        Sets info neccessary for encoding message text.
+
+        Parameters:
+            default_encoding: SMSC default encoding.
+            custom_codecs: User-provided codecs, if any.
+        '''
         self._default_encoding = default_encoding
         self._custom_codecs = custom_codecs
 
     def smpp_encode(self, text: str) -> bytes:
+        '''
+        Encodes text to byte sequence, using provided encoding info.
+
+        Parameters:
+            text: Text to be encoded.
+        '''
         if not self.encoding:
             # Auto; first try default encoding, fallback to UCS2
             try:
@@ -479,95 +509,92 @@ class SubmitSmResp(Trackable, SmppMessage):
 class DeliverSm(SubmitSm):
     '''
     Represents the deliver_sm SMPP message type.
-
-    Parameters:
-        receipt: A dictionary containing delivery receipt data
     '''
-    receipt: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self) -> None:
-        check_param(self.receipt, 'receipt', dict, optional=True)
-        receipt: Optional[Dict[str, Any]] = self.receipt
-        if receipt:
-            self.esm_class = 0b00000100
-        if receipt and not self.short_message:
-            # Encode receipt in short_message text
-            # Receipt format is SMSC-specific, but it usually follows the following pattern
-            msg_id: str = receipt.get('id', '') # Message ID allocated by the SMSC when submitted.
-            sub: int = receipt.get('sub', 0) # Number of short messages originally submitted.
-            dlvrd: int = receipt.get('dlvrd', 0) # Number of short messages delivered.
-            # The time and date at which the message was submitted.
-            submit_date: Optional[datetime] = receipt.get('submit date')
-            submit_date_str: str = submit_date.strftime('%y%m%d%H%M') if submit_date else ''
-            # The time and date at which the message reached its final state.
-            done_date: Optional[datetime] = receipt.get('done date')
-            done_date_str: str = done_date.strftime('%y%m%d%H%M') if done_date else ''
-            stat: str = receipt.get('stat', '') # The final status of the message.
-            err: str = receipt.get('err', '') # Network specific error code or an SMSC error code.
-            text: str = receipt.get('text', '') # The first 20 characters of the short message.
-            self.short_message = (f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
-                                  f' submit date:{submit_date_str} done date:{done_date_str}'
-                                  f' stat:{stat} err:{err} Text:{text:20}')
-        super().__post_init__()
-
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.DELIVER_SM
 
-    @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
-        deliver_sm: SmppMessage = super().from_pdu(pdu, header, default_encoding, custom_codecs)
-        assert isinstance(deliver_sm, DeliverSm) # For type checkers
+    def is_receipt(self) -> bool:
+        '''
+        Checks if this DeliverSm is a delivery receipt.
+        '''
+        # Only middle 4 bits are relevant: 0 = incoming SMS, 1 = delivery receipt
+        return (self.esm_class & 0b00111100) >> 2 == 1
+
+    def parse_receipt(self) -> Dict[str, Any]:
+        '''
+        Parses short_message text and returns a dictionary with receipt data.
+        '''
+        if not self.is_receipt():
+            return {}
 
         def get_receipt_param() -> Tuple[Optional[str], Optional[str]]:
             nonlocal index
-            nonlocal deliver_sm
-            str_end: int = deliver_sm.short_message.find(':', index)
+            str_end: int = self.short_message.find(':', index)
             if str_end == -1:
                 return None, None
-            param: str = deliver_sm.short_message[index:str_end].lower()
+            param: str = self.short_message[index:str_end].lower()
             index = str_end + 1
-            str_end = deliver_sm.short_message.find(' ', index)
+            str_end = self.short_message.find(' ', index)
             if str_end == -1 or param == 'text': # Text must be last
-                str_end = len(deliver_sm.short_message)
-            value: str = deliver_sm.short_message[index:str_end]
+                str_end = len(self.short_message)
+            value: str = self.short_message[index:str_end]
             index = str_end + 1
             return param, value
 
-        # Only middle 4 bits are relevant: 0 = incoming SMS, 1 = delivery receipt
-        message_class: int = (deliver_sm.esm_class & 0b00111100) >> 2
-        if message_class == 1:
-            # This is a delivery receipt
-            rcpt_data: Dict = {}
-            index = 0
-            rcpt_param: Optional[str]
-            rcpt_value: Optional[str]
-            while True:
-                rcpt_param, rcpt_value = get_receipt_param()
-                if rcpt_param is None or rcpt_value is None:
-                    break
-                if rcpt_param in ('sub', 'dlvrd'):
-                    rcpt_data[rcpt_param] = int(rcpt_value)
-                elif rcpt_param in ('submit date', 'done date'):
-                    rcpt_data[rcpt_param] = datetime.strptime(rcpt_value, '%y%m%d%H%M')
-                elif rcpt_param in ('id', 'stat', 'err', 'text'):
-                    rcpt_data[rcpt_param] = rcpt_value
-                else:
-                    rcpt_data[rcpt_param] = rcpt_value
+        rcpt_data: Dict[str, Any] = {}
+        index = 0
+        rcpt_param: Optional[str]
+        rcpt_value: Optional[str]
+        while True:
+            rcpt_param, rcpt_value = get_receipt_param()
+            if rcpt_param is None or rcpt_value is None:
+                break
+            if rcpt_param in ('sub', 'dlvrd'):
+                rcpt_data[rcpt_param] = int(rcpt_value)
+            elif rcpt_param in ('submit date', 'done date'):
+                rcpt_data[rcpt_param] = datetime.strptime(rcpt_value, '%y%m%d%H%M')
+            elif rcpt_param in ('id', 'stat', 'err', 'text'):
+                rcpt_data[rcpt_param] = rcpt_value
+            else:
+                rcpt_data[rcpt_param] = rcpt_value
 
-            smsc_message_id: Optional[str] = rcpt_data.get('id') # Get message ID from report data
-            if not smsc_message_id and deliver_sm.optional_params:
-                # Message ID not found, check if receipted_message_id param exists
-                id_param: Optional[OptionalParam] = next((
-                    param for param in deliver_sm.optional_params
-                    if param.tag == OptionalTag.RECEIPTED_MESSAGE_ID
-                ), None)
-                if id_param:
-                    rcpt_data['id'] = id_param.value
-            deliver_sm.receipt = rcpt_data
+        smsc_message_id: Optional[str] = rcpt_data.get('id') # Get message ID from report data
+        if not smsc_message_id and self.optional_params:
+            # Message ID not found, check if receipted_message_id param exists
+            id_param: Optional[OptionalParam] = next((
+                param for param in self.optional_params
+                if param.tag == OptionalTag.RECEIPTED_MESSAGE_ID
+            ), None)
+            if id_param:
+                rcpt_data['id'] = id_param.value
 
-        return deliver_sm
+        return rcpt_data
+
+    @staticmethod
+    def encode_receipt(rcpt_data: Dict[str, Any]) -> str:
+        '''
+        Encodes receipt dictionary in text.
+
+        Parameters:
+            rcpt_data: A dictionary containing receipt data.
+        '''
+        # Receipt format is SMSC-specific, but it usually follows the following pattern
+        msg_id: str = rcpt_data.get('id', '') # Message ID allocated by the SMSC when submitted.
+        sub: int = rcpt_data.get('sub', 0) # Number of short messages originally submitted.
+        dlvrd: int = rcpt_data.get('dlvrd', 0) # Number of short messages delivered.
+        # The time and date at which the message was submitted.
+        submit_date: Optional[datetime] = rcpt_data.get('submit date')
+        submit_date_str: str = submit_date.strftime('%y%m%d%H%M') if submit_date else ''
+        # The time and date at which the message reached its final state.
+        done_date: Optional[datetime] = rcpt_data.get('done date')
+        done_date_str: str = done_date.strftime('%y%m%d%H%M') if done_date else ''
+        stat: str = rcpt_data.get('stat', '') # The final status of the message.
+        err: str = rcpt_data.get('err', '') # Network specific error code or an SMSC error code.
+        text: str = rcpt_data.get('text', '') # The first 20 characters of the short message.
+        return (f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
+                f' submit date:{submit_date_str} done date:{done_date_str}'
+                f' stat:{stat} err:{err} Text:{text:20}')
 
 
 @dataclass

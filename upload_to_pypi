@@ -1,5 +1,0 @@
-#!/bin/bash
-source /opt/vscode-venv/bin/activate
-python setup.py sdist
-twine upload dist/*
-

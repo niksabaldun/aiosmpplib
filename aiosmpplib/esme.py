@@ -572,8 +572,9 @@ class ESME:
                 self._logger.exception('Unable to parse PDU', header=header, pdu=pdu.hex())
             await self._send_data(GenericNack(header.sequence_num))
             return None
-        if isinstance(smpp_message, DeliverSm) and smpp_message.receipt:
-            msg_id: str = smpp_message.receipt.get('id', '')
+        if isinstance(smpp_message, DeliverSm) and smpp_message.is_receipt():
+            receipt: Dict[str, Any] = smpp_message.parse_receipt()
+            msg_id: str = receipt.get('id', '')
             if msg_id:
                 log_id: str
                 extra_data: str
@@ -590,7 +591,7 @@ class ESME:
                                          smsc_message_id=msg_id)
             else:
                 self._logger.warning('Could not get receipted message ID from delivery receipt',
-                                     header=header, receipt=smpp_message.receipt)
+                                     header=header, receipt=receipt)
 
         self._logger.debug('Handled SMPP request', header=header)
         return smpp_message

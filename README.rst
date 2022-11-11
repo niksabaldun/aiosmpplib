@@ -104,7 +104,7 @@ Your application interacts with ESME via three interfaces: broker, correlator an
 Incoming message flow
 _____________________
 Receiving messages is straightforward. The ``received`` hook will be called. If the
-``smpp_message`` parameter is of type **DeliverSm** and its ``receipt`` member is ``None``,
+``smpp_message`` parameter is of type **DeliverSm** and its ``is_receipt`` method returns ``False``,
 it is an incoming SMS. Store it as appropriate.
 
 Outgoing message flow
@@ -134,9 +134,9 @@ Sending messages is a lot more involved.
 
    Again, if the message was rejected, it will not be re-sent automatically.
 5. If the request was accepted, a delivery receipt should arrive after some time.
-   In ``received`` hook, look for **DeliverSm** message whose ``receipt`` member is not ``None``.
-   Receipt is a dictionary whose structure is SMSC-specific,
-   but it usually has the following items:
+   In ``received`` hook, look for **DeliverSm** message whose ``is_receipt`` method
+   returns ``True``. Then use ``parse_receipt`` method to get a dictionary with parsed data.
+   Receipt structure is SMSC-specific, but it usually has the following items:
    
    .. code-block:: python
 
@@ -162,6 +162,66 @@ Sending messages is a lot more involved.
    * ``REJECTD`` - Message is in a rejected state.
 
    For more details, check `SMPP specification <https://smpp.org/SMPP_v3_4_Issue1_2.pdf>`_.
+
+Example hook implementation:
+____________________________
+
+.. code-block:: python
+
+    import asyncio
+    from aiosmpplib import BaseHook, SmppCommandStatus
+    from aiosmpplib import DeliverSm, SubmitSm, SubmitSmResp, GenericNack, SmppMessage, Trackable
+
+    class MyHook(BaseHook):
+        async def _save_result(self, msg: str, smpp_message: Trackable) -> None:
+            log_id: str = smpp_message.log_id
+            extra_data: str = smpp_message.extra_data
+            # Save data to database
+
+        async def sending(self, smpp_message: SmppMessage, pdu: bytes, client_id: str) -> None:
+            pass # Or trace log
+
+        async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
+                           client_id: str) -> None:
+            if isinstance(smpp_message, GenericNack):
+                await self._save_result('Sending failed', smpp_message)
+                # Requeue if desired
+            if isinstance(smpp_message, SubmitSmResp):
+                if smpp_message.command_status == SmppCommandStatus.ESME_ROK:
+                    await self._save_result('Message sent', smpp_message)
+                else:
+                    await self._save_result('Sending failed', smpp_message)
+                    # Requeue if desired
+            elif isinstance(smpp_message, DeliverSm):
+                if smpp_message.is_receipt():
+                    # This is a delivery receipt
+                    receipt: Dict[str, Any] = smpp_message.parse_receipt()
+                    final_status: str = receipt.get('stat', '')
+                    if final_status == 'DELIVRD':
+                        msg: str = 'Delivered to handset'
+                    elif final_status == 'EXPIRED':
+                        msg: str = 'Message expired'
+                    elif final_status == 'DELETED':
+                        msg: str = 'Message deleted by SC'
+                    elif final_status == 'UNDELIV':
+                        msg: str = 'Message undeliverable'
+                    elif final_status == 'ACCEPTD':
+                        msg: str = 'Message accepted'
+                    elif final_status == 'REJECTD':
+                        msg: str = 'Message rejected'
+                    else:
+                        msg: str = 'Unknown status'
+                    await self._save_result(msg, smpp_message)
+                else:
+                    pass
+                    # This is an incoming SMS
+                    # Process and save to database
+
+        async def send_error(self, smpp_message: SmppMessage, error: Exception, client_id: str) -> None:
+            if isinstance(smpp_message, SubmitSm):
+                await self._save_result('Sending failed', smpp_message)
+                # Requeue if desired
+
 
 Bug Reporting
 -------------
