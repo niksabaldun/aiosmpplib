@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Optional
 from .log import TRACE, StructuredLogger
 from .protocol import SmppMessage
 from .utils import check_param
@@ -68,14 +68,13 @@ class SimpleHook(BaseHook):
 
     async def sending(self, smpp_message: SmppMessage, pdu: bytes, client_id: str) -> None:
         if self.logger.isEnabledFor(TRACE):
-            self.logger.trace(TRACE, 'Sending message', pdu=pdu.hex(), **smpp_message.as_dict())
+            self.logger.trace(TRACE, 'Sending message', pdu=pdu.hex())
 
     async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
                        client_id: str) -> None:
         if self.logger.isEnabledFor(TRACE):
-            params: Dict[str, Any] = smpp_message.as_dict() if smpp_message else {}
-            self.logger.trace('Received message', pdu=pdu.hex(), **params)
+            self.logger.trace('Received message', pdu=pdu.hex())
 
     async def send_error(self, smpp_message: SmppMessage, error: Exception, client_id: str) -> None:
         if self.logger.isEnabledFor(TRACE):
-            self.logger.trace('Send error occured', exc_info=error, **smpp_message.as_dict())
+            self.logger.trace('Send error occured', exc_info=error)

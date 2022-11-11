@@ -8,15 +8,15 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple, Type, T
 from .broker import BaseBroker, SimpleBroker
 from .correlator import BaseCorrelator, SimpleCorrelator
 from .hook import BaseHook, SimpleHook
-from .log import ERROR, INFO, StructuredLogger, Handler
-from .protocol import (MESSAGE_TYPE_MAP, PDU_HEADER_LENGTH, SMPP_VERSION_3_4,
+from .log import ERROR, WARNING, INFO, StructuredLogger, Handler
+from .protocol import (DEFAULT_ENCODING, MESSAGE_TYPE_MAP, PDU_HEADER_LENGTH, SMPP_VERSION_3_4,
                        SmppMessage, GenericNack, SubmitSm, SubmitSmResp, DeliverSm,
-                       BindTransceiver, BindTransceiverResp, EnquireLink, Unbind)
+                       BindReceiver, BindTransmitter, BindTransceiver, EnquireLink, Unbind)
 from .ratelimiter import BaseRateLimiter
 from .retrytimer import BaseRetryTimer, SimpleExponentialBackoff
 from .sequence import BaseSequenceGenerator, SimpleSequenceGenerator, assert_valid_sequence
 from .throttle import BaseThrottleHandler, SimpleThrottleHandler
-from .state import (COMMAND_RESPONSE_MAP, RESPONSE_COMMAND_MAP, NPI, TON, PduHeader,
+from .state import (COMMAND_RESPONSE_MAP, RESPONSE_COMMAND_MAP, NPI, TON, PduHeader, BindMode,
                     SmppCommand, SmppDataCoding, SmppError, SmppSessionState, SmppCommandStatus)
 from .utils import check_param
 
@@ -43,58 +43,60 @@ class ESME:
         esme: ESME = ESME(
             smsc_host='127.0.0.1',
             smsc_port=2775,
-            system_id='smppclient1',
+            system_id='esme1',
             password=os.getenv('password', 'password'),
         )
         await esme.start()
     '''
 
     def __init__(self,
-                smsc_host: str,
-                smsc_port: int,
-                system_id: str,
-                password: str,
-                system_type: str='',
-                addr_ton: TON=TON.UNKNOWN,
-                addr_npi: NPI=NPI.UNKNOWN,
-                address_range: str='',
-                ### NON-SMPP ATTRIBUTES ###
-                client_id: Optional[str]=None,
-                enquire_link_interval: float=55.00,
-                log_level: Union[str, int]=INFO,
-                log_metadata: Optional[Dict[str, Any]]=None,
-                log_handler: Optional[Handler]=None,
-                log_include_timestamp: bool=True,
-                hook: Optional[BaseHook]=None,
-                broker: Optional[BaseBroker]=None,
-                rate_limiter: Optional[BaseRateLimiter]=None,
-                sequence_generator: Optional[BaseSequenceGenerator]=None,
-                throttle_handler: Optional[BaseThrottleHandler]=None,
-                correlator: Optional[BaseCorrelator]=None,
-                retry_timer: Optional[BaseRetryTimer]=None,
-                socket_timeout: float=30.0,
-                custom_codecs: Optional[Dict[str, CodecInfo]]=None,
-                default_encoding: str='gsm0338',
-                testing: bool=False) -> None:
+                 smsc_host: str,
+                 smsc_port: int,
+                 system_id: str,
+                 password: str,
+                 system_type: str='',
+                 addr_ton: TON=TON.UNKNOWN,
+                 addr_npi: NPI=NPI.UNKNOWN,
+                 address_range: str='',
+                 bind_mode: BindMode=BindMode.TRANSCEIVER,
+                 ### NON-SMPP ATTRIBUTES ###
+                 client_id: Optional[str]=None,
+                 enquire_link_interval: float=55.00,
+                 log_level: Union[str, int]=INFO,
+                 log_metadata: Optional[Dict[str, Any]]=None,
+                 log_handler: Optional[Handler]=None,
+                 log_include_timestamp: bool=True,
+                 hook: Optional[BaseHook]=None,
+                 broker: Optional[BaseBroker]=None,
+                 rate_limiter: Optional[BaseRateLimiter]=None,
+                 sequence_generator: Optional[BaseSequenceGenerator]=None,
+                 throttle_handler: Optional[BaseThrottleHandler]=None,
+                 correlator: Optional[BaseCorrelator]=None,
+                 retry_timer: Optional[BaseRetryTimer]=None,
+                 socket_timeout: float=30.0,
+                 custom_codecs: Optional[Dict[str, CodecInfo]]=None,
+                 default_encoding: str=DEFAULT_ENCODING,
+                 testing: bool=False) -> None:
         '''
         Parameters:
-            smsc_host:	The IP address(or domain name) of the SMSC gateway/server
-            smsc_port:	The port at which SMSC is listening on
-            system_id:	Identifies the ESME system requesting to bind as
-                        a transceiver with the SMSC.
-            password:	The password to be used by the SMSC to authenticate
-                        the ESME requesting to bind.
-            broker:	A Python class instance implementing some queueing mechanism.
+            smsc_host: The IP address(or domain name) of the SMSC gateway/server
+            smsc_port: The port at which SMSC is listening on
+            system_id: Identifies the ESME system requesting to bind as
+                       a transceiver with the SMSC.
+            password: The password to be used by the SMSC to authenticate
+                      the ESME requesting to bind.
+            broker: A Python class instance implementing some queueing mechanism.
                     messages to be sent to SMSC are queued using the said mechanism before been sent
-            client_id:	A unique string identifying a aiosmpplib client class instance
-            system_type:	Identifies the type of ESME system requesting to bind with the SMSC.
-            addr_ton:	Type of Number of the ESME address.
-            addr_npi:	Numbering Plan Indicator (NPI) for ESME address(es) served
-                        via this SMPP transceiver session
-            address_range:	A single ESME address or a range of ESME addresses served
-                            via this SMPP transceiver session.
-            enquire_link_interval:	Time in seconds to wait before sending
-                                    an enquire_link request to SMSC to check on its status
+            client_id: A unique string identifying a aiosmpplib ESME class instance
+            system_type: Identifies the type of ESME system requesting to bind with the SMSC.
+            addr_ton: Type of Number of the ESME address.
+            addr_npi: Numbering Plan Indicator (NPI) for ESME address(es) served
+                      via this SMPP transceiver session
+            address_range: A single ESME address or a range of ESME addresses served
+                           via this SMPP transceiver session.
+            bind_mode: ESME bind mode (transmitter, receiver, transceiver).
+            enquire_link_interval: Time in seconds to wait before sending
+                                   an enquire_link request to SMSC to check on its status
             log_level: The level at which to log
             log_metadata: Metadata that will be included in all log statements
             log_handler: Python logging handler to use for logging.
@@ -102,14 +104,14 @@ class ESME:
             hook: A BaseHook instance implementing methods to be called
                   just before sending request to SMSC and just after getting response from SMSC
             rate_limiter: A BaseRateLimiter instance implementing rate limitation
-            sequence_generator:	A BaseSequenceGenerator instance used to generate sequence_nums
+            sequence_generator: A BaseSequenceGenerator instance used to generate sequence_nums
             throttle_handler: A BaseThrottleHandler instance implementing logic for
                               dealing with throttled responses from SMSC
             correlator: A BaseCorrelator instance used to store relations
                         between SMPP requests and responses, and also
                         between SubmitSM requests and DeliverSm receipts.
             retry_timer: A BaseRetryTimer instance used to time reconnection retries.
-            socket_timeout: Duration that client will wait, for socket/connection
+            socket_timeout: Duration that ESME will wait, for socket/connection
                             related activities with SMSC, before timing out
             custom_codecs: A dictionary of encodings and their corresponding `codecs.CodecInfo
                            <https://docs.python.org/3/library/codecs.html#codecs.CodecInfo>`_
@@ -129,6 +131,7 @@ class ESME:
         check_param(addr_ton, 'addr_ton', TON)
         check_param(addr_npi, 'addr_npi', NPI)
         check_param(address_range, 'address_range', str)
+        check_param(bind_mode, 'bind_mode', BindMode)
         check_param(client_id, 'client_id', str, optional=True)
         check_param(enquire_link_interval, 'enquire_link_interval', float)
         check_param(log_level, 'log_level', (int, str))
@@ -167,6 +170,7 @@ class ESME:
         self.addr_ton: TON = addr_ton
         self.addr_npi: NPI = addr_npi
         self.address_range: str = address_range
+        self.bind_mode: BindMode = bind_mode
         self.client_id: str = client_id or ''.join(random.choices(ascii_lowercase + digits, k=17))
         self.enquire_link_interval: float = enquire_link_interval
         self.default_encoding: str = default_encoding
@@ -283,7 +287,7 @@ class ESME:
                                                     return_when=asyncio.FIRST_COMPLETED)
                 await next(iter(done)) # There must be only one element
 
-                if self._is_shutting_down or self._session_state != SmppSessionState.BOUND_TRX:
+                if self._is_shutting_down or self._session_state != self.bind_mode.session_state:
                     break
 
                 if sleep_task in done:
@@ -295,7 +299,7 @@ class ESME:
                     # Data was received, cancel sleep task and start over
                     await self._cancel_task(sleep_task, 'Connection keeper sleep')
 
-                if self._is_shutting_down or self._session_state != SmppSessionState.BOUND_TRX:
+                if self._is_shutting_down or self._session_state != self.bind_mode.session_state:
                     break
 
                 self._data_received.clear()
@@ -324,9 +328,9 @@ class ESME:
         self._logger.debug('Requested sending SMPP message',
                            smpp_command=smpp_message.smpp_command.name)
 
-        # BIND_TRANSCEIVER is the only command which can be sent in open state.
+        # Only bind-type commands can be sent in open state.
         # Otherwise, wait until we are in bound state.
-        if smpp_message.smpp_command != SmppCommand.BIND_TRANSCEIVER:
+        if not isinstance(smpp_message, (BindTransmitter, BindReceiver, BindTransceiver)):
             await self._bound.wait()
 
         if smpp_message.smpp_command in COMMAND_RESPONSE_MAP:
@@ -370,7 +374,7 @@ class ESME:
         '''
         try:
             while True:
-                if self._is_shutting_down or self._session_state != SmppSessionState.BOUND_TRX:
+                if self._is_shutting_down or self._session_state != self.bind_mode.session_state:
                     self._logger.info('Exiting dequeue loop due to broken connection')
                     return {'reason': 'shutdown'}
 
@@ -385,6 +389,11 @@ class ESME:
                     # Broker must never raise exception when dequeueing.
                     # It must handle exceptions internally and implement retry mechanism.
                     smpp_message: SmppMessage = await self.broker.dequeue()
+                    if self.bind_mode == BindMode.RECEIVER:
+                        if self._logger.isEnabledFor(WARNING):
+                            self._logger.warning('ESME bound as receiver. Message discarded.',
+                                                 message=smpp_message)
+                        continue
                     if isinstance(smpp_message, SubmitSm):
                         smpp_message.set_encoding_info(self.default_encoding, self.custom_codecs)
                     try:
@@ -393,7 +402,7 @@ class ESME:
                         # We must intercept this exception to inform user application about failure
                         if self._logger.isEnabledFor(ERROR):
                             self._logger.exception('SMPP message could not be sent',
-                                                   **smpp_message.as_dict())
+                                                   message=smpp_message)
                         if isinstance(smpp_message, SubmitSm):
                             await self.hook.send_error(smpp_message, err, self.client_id)
                         # ValueError indicates problem with building the PDU, which is likely the
@@ -424,7 +433,7 @@ class ESME:
         '''
         try:
             while True:
-                if self._is_shutting_down or self._session_state != SmppSessionState.BOUND_TRX:
+                if self._is_shutting_down or self._session_state != self.bind_mode.session_state:
                     self._logger.info('Exiting receive data loop due to broken connection')
                     return None
 
@@ -472,9 +481,11 @@ class ESME:
         '''
         self._logger.debug('Handling SMPP response', header=header)
 
-        if header.smpp_command not in (SmppCommand.BIND_TRANSCEIVER_RESP, SmppCommand.UNBIND_RESP,
-                                       SmppCommand.SUBMIT_SM_RESP, SmppCommand.ENQUIRE_LINK_RESP,
-                                       SmppCommand.GENERIC_NACK):
+        if header.smpp_command not in (SmppCommand.BIND_TRANSMITTER_RESP,
+                                       SmppCommand.BIND_RECEIVER_RESP,
+                                       SmppCommand.BIND_TRANSCEIVER_RESP,
+                                       SmppCommand.UNBIND_RESP, SmppCommand.SUBMIT_SM_RESP,
+                                       SmppCommand.ENQUIRE_LINK_RESP, SmppCommand.GENERIC_NACK):
             # This should not happen; we don't send any other requests
             self._logger.warning('Received unexpected SMPP response', header=header)
             return None
@@ -555,7 +566,7 @@ class ESME:
         message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
         try:
             smpp_message: SmppMessage = message_class.from_pdu(pdu, header, self.default_encoding,
-                                                                         self.custom_codecs)
+                                                               self.custom_codecs)
         except ValueError:
             if self._logger.isEnabledFor(ERROR):
                 self._logger.exception('Unable to parse PDU', header=header, pdu=pdu.hex())
@@ -588,6 +599,8 @@ class ESME:
         '''
         Drop connection to SMSC.
         '''
+        if self._writer is None:
+            return # Already disconnected
         self._logger.debug('Closing network connection to SMSC')
         try:
             # 1. Set buffers to 0
@@ -595,11 +608,9 @@ class ESME:
             # 3. Drain
             # 4. Close connection
             # `start` function will await all tasks and set state to closed before it exits
-
-            assert isinstance(self._writer, StreamWriter) # For type checkers
             # see: https://github.com/komuw/naz/issues/117
             self._writer.transport.set_write_buffer_limits(0)  # pytype: disable=attribute-error
-            if self._session_state == SmppSessionState.BOUND_TRX:
+            if self._session_state == self.bind_mode.session_state:
                 await self._send_data(Unbind())
             async with self._drain_lock:
                 await self._writer.drain()
@@ -613,16 +624,19 @@ class ESME:
         '''
         Open connection to SMSC and bind as a transceiver.
         '''
-        if self._session_state == SmppSessionState.BOUND_TRX:
+        if self._session_state == self.bind_mode.session_state:
             return
-        self._logger.info('Starting connection to SMSC')
+        self._logger.info('Initiating connection to SMSC')
         self._writer = None
         conn_func = asyncio.open_connection(self.smsc_host, self.smsc_port,
                                             limit=_NETWORK_BUFFER_LIMIT)
         self._reader, self._writer = await self._socket_operation(conn_func)
         self._session_state = SmppSessionState.OPEN
-        self._logger.info('Connected to SMSC, trying to bind as a transceiver')
-        smpp_message: BindTransceiver = BindTransceiver(
+        self._logger.info('Connected to SMSC, trying to bind as a %s', self.bind_mode.description)
+        bind_command: SmppCommand = self.bind_mode.smpp_command
+        bind_request_cls: Type[SmppMessage] = MESSAGE_TYPE_MAP[bind_command]
+        assert bind_request_cls in (BindTransmitter, BindReceiver, BindTransceiver)
+        bind_request: SmppMessage = bind_request_cls(
             system_id=self.system_id,
             password=self.password,
             system_type=self.system_type,
@@ -631,28 +645,32 @@ class ESME:
             addr_npi=self.addr_npi,
             address_range=self.address_range,
         )
-        await self._socket_operation(self._send_data(smpp_message))
+        await self._socket_operation(self._send_data(bind_request))
         # Wait for response. Comment from original library developer stated that sometimes
         # the SMSC does not send the response. However, that would imply SMSC bug and
         # this behavior will not be taken into account until confirmed.
         pdu: bytes
         header: PduHeader
         pdu, header = await self._socket_operation(self._get_pdu())
-        await self.hook.received(BindTransceiverResp.from_pdu(pdu, header), pdu, self.client_id)
-        # ESME_RALYBND means that the client is already bound.
+        expected_response_command = COMMAND_RESPONSE_MAP[bind_command]
+        if header.smpp_command != expected_response_command:
+            raise SmppError(header.smpp_command, header.command_status)
+        bind_response_cls: Type[SmppMessage] = MESSAGE_TYPE_MAP[expected_response_command]
+        await self.hook.received(bind_response_cls.from_pdu(pdu, header), pdu, self.client_id)
+        # ESME_RALYBND means that we are already bound.
         # This should not happen, but we cover it just in case.
         if header.command_status not in (SmppCommandStatus.ESME_ROK,
                                          SmppCommandStatus.ESME_RALYBND):
             self._session_state = SmppSessionState.CLOSED
-            raise SmppError(header.command_status)
-        self._session_state = SmppSessionState.BOUND_TRX
-        self._logger.info('Bound to SMSC')
+            raise SmppError(header.smpp_command, header.command_status)
+        self._session_state = self.bind_mode.session_state
+        self._logger.info('Bound to SMSC as a %s', self.bind_mode.description)
 
     async def start(self) -> None:
         '''
-        Start the client. Open connection to SMSC and bind as a transceiver.
+        Start the ESME. Open connection to SMSC and bind as a transceiver.
         '''
-        self._logger.info('Starting SMPP client')
+        self._logger.info('Starting ESME')
         error_message: str = ''
         conn_error: Optional[Exception]
         all_tasks: Set[Task] = set()
@@ -665,7 +683,7 @@ class ESME:
                 self.retry_timer.reset()
                 self._bound.set() # Tell _send_data it can proceed
                 # Wait until any task fails
-                all_tasks = {
+                all_tasks: Set[Task] = {
                     asyncio.create_task(self._receive_data(), name='Receiver'),
                     asyncio.create_task(self._dequeue_messages(), name='Sender'),
                     asyncio.create_task(self._connection_keeper(), name='Connection keeper'),
@@ -681,7 +699,8 @@ class ESME:
                 for task in pending_tasks:
                     await self._end_task(task)
             except SmppError as err:
-                error_message = f'Error response received from SMSC: {err.command_status.name}'
+                error_message = (f'Error response received from SMSC: '
+                                 f'{err.smpp_command.name}: {err.command_status.name}')
                 conn_error = err
             except ConnectionResetError as err:
                 error_message = 'Connection lost while connecting to SMSC'
@@ -713,15 +732,19 @@ class ESME:
                     self._logger.info('Delaying next connect attempt by %s seconds', delay)
             await self.retry_timer.wait()
 
-        self._logger.debug('SMPP client starter ended')
+        self._logger.debug('ESME starter ended')
         self._shut_down.set()
 
     async def stop(self) -> None:
         '''
-        Cleanly shutdown the client.
+        Cleanly shutdown the ESME.
         '''
-        self._logger.info('Shutting down SMPP client')
+        self._logger.info('Shutting down ESME')
         self._is_shutting_down = True
         await self._disconnect()
         await self._shut_down.wait()
-        self._logger.info('SMPP client is shut down')
+        self._logger.info('ESME is shut down')
+
+    @property
+    def session_state(self) -> SmppSessionState:
+        return self._session_state

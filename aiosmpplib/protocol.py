@@ -1,11 +1,11 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from codecs import CodecInfo
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import floor
 from struct import pack, unpack_from
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
-from inspect import signature
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from .codec import find_codec_info
 from .state import (NPI, TON, OptionalParam, OptionalTag, PhoneNumber, SmppCommand,
@@ -16,40 +16,49 @@ from .utils import check_param, FixedOffset
 NULL = b'\x00'
 PDU_HEADER_LENGTH: int = 16
 SMPP_VERSION_3_4: int = 0x34
+DEFAULT_ENCODING: str = 'gsm0338'
 
 
-class Trackable(ABC):
-    def __init__(self, log_id: str, extra_data: str) -> None:
-        '''
-        Parameters:
-            log_id: A unique identifier of this request
-            extra_data: A custom string associated with this request.
-        '''
-        check_param(log_id, 'log_id', str)
-        check_param(extra_data, 'extra_data', str)
-        self.log_id = log_id
-        self.extra_data = extra_data
+class Base(ABC):
+    def __post_init__(self):
+        # Intercept the __post_init__ calls so they aren't relayed to `object`
+        pass
 
 
-class SmppMessage(ABC):
+@dataclass
+class Trackable(Base):
     '''
-    Represents the SMPP protocol message interface.
+    Represents interface for a SMPP message that supports tracking.
 
-    Users should only have to deal with the :class:`SubmitSm <SubmitSm>` and
-    :class:`DeliverSm <DeliverSm>` implementations.
+    Parameters:
+        log_id: A unique identifier of this request
+        extra_data: A custom string associated with this request.
     '''
+    log_id: str = ''
+    extra_data: str = ''
 
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number (for requests, generated before sending)
-            command_status: SMPP response status (only relevant for responses)
-        '''
-        check_param(sequence_num, 'sequence_num', int)
-        check_param(command_status, 'command_status', SmppCommandStatus)
-        self.command_status: SmppCommandStatus = command_status
-        self.sequence_num: int = sequence_num
+    def __post_init__(self) -> None:
+        check_param(self.log_id, 'log_id', str)
+        check_param(self.extra_data, 'extra_data', str)
+        super().__post_init__()
+
+
+@dataclass
+class SmppMessage(Base):
+    '''
+    Represents the SMPP protocol message.
+
+    Parameters:
+        sequence_num: SMPP sequence number (for requests, generated before sending)
+        command_status: SMPP response status (only relevant for responses)
+    '''
+    sequence_num: int = 0
+    command_status: SmppCommandStatus = SmppCommandStatus.ESME_ROK
+
+    def __post_init__(self) -> None:
+        check_param(self.sequence_num, 'sequence_num', int)
+        check_param(self.command_status, 'command_status', SmppCommandStatus)
+        super().__post_init__()
 
     @property
     @abstractmethod
@@ -106,112 +115,106 @@ class SmppMessage(ABC):
         '''
         # pylint: disable=unused-argument
         # Many messages have empty body, so this is a default
-        if 'command_status' not in signature(cls.__init__).parameters:
-            # Requests don't have a command status
-            return cls(header.sequence_num)
         return cls(header.sequence_num, header.command_status)
 
 
-class Sm(SmppMessage, Trackable):
+@dataclass
+class SubmitSm(Trackable, SmppMessage):
     '''
-    SubmitSm and DeliverSm have identical structure, so they share the same parent class.
-    '''
-    def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
-                 service_type: str, esm_class: int, protocol_id: int, priority_flag:int,
-                 schedule_delivery_time: Optional[Union[datetime, timedelta]],
-                 validity_period: Optional[Union[datetime, timedelta]], registered_delivery: int,
-                 replace_if_present_flag: int, encoding: Optional[str], sm_default_msg_id: int,
-                 message_payload: str, optional_params: Sequence[OptionalParam],
-                 auto_message_payload: bool, error_handling: str, sequence_num: int,
-                 log_id: str, extra_data: str) -> None:
-        '''
-        Parameters:
-            short_message: Message to send to SMSC
-            source: The phone number/identifier of the message sender
-            destination: The phone number/identifier of the message recipient
-            service_type: Indicates the SMS Application service associated with the message
-            esm_class: Indicates Message Mode & Message Type.
-            protocol_id: Protocol Identifier. Network specific field.
-            priority_flag: Designates the priority level of the message.
-            schedule_delivery_time: Time at which the message delivery should be first attempted.
-            validity_period: The validity period of this message.
-            registered_delivery: Indicator to signify if an SMSC delivery receipt
-                                 or an SME acknowledgement is required.
-            replace_if_present_flag: Flag indicating if submitted message should replace
-                                     an existing message.
-                               ('canned') short messages stored on the SMSC
-            encoding: `encoding <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
-                       used to encode messages been sent to SMSC. The encoding should be one of
-                       the encodings recognised by the SMPP specification. See section 5.2.19 of
-                       SMPP spec. If you want to use your own custom codec implementation for an
-                       encoding, make sure to pass it to
-                       :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
-            sm_default_msg_id: Indicates the short message to send from a list of predefined
-            message_payload: Optional parameter message_payload, needs special handling
-            optional_params: List of optional parameters, if any
-            auto_message_payload: Automatically use message_payload if message
-                                  does not fit in short_message
-            error_handling: same meaning as the `errors` argument to Python's
-                            `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
-                            method
-            sequence_num: SMPP sequence number
-            log_id: A unique identifier of this request
-            extra_data: A custom string associated with this request.
-        '''
-        SmppMessage.__init__(self, sequence_num)
-        Trackable.__init__(self, log_id, extra_data)
+    Represents the submit_sm SMPP message type.
 
-        check_param(short_message, 'short_message', str)
-        check_param(source, 'source', PhoneNumber)
-        check_param(destination, 'destination', PhoneNumber)
-        check_param(service_type, 'service_type', str)
-        check_param(esm_class, 'esm_class', int)
-        check_param(protocol_id, 'protocol_id', int)
-        check_param(priority_flag, 'priority_flag', int)
-        check_param(schedule_delivery_time, 'schedule_delivery_time', (datetime, timedelta),
+    Parameters:
+        short_message: Message to send to SMSC
+        source: The phone number/identifier of the message sender
+        destination: The phone number/identifier of the message recipient
+        service_type: Indicates the SMS Application service associated with the message
+        esm_class: Indicates Message Mode & Message Type.
+        protocol_id: Protocol Identifier. Network specific field.
+        priority_flag: Designates the priority level of the message.
+        schedule_delivery_time: Time at which the message delivery should be first attempted.
+        validity_period: The validity period of this message.
+        registered_delivery: Indicator to signify if an SMSC delivery receipt
+                                or an SME acknowledgement is required.
+        replace_if_present_flag: Flag indicating if submitted message should replace
+                                    an existing message.
+                            ('canned') short messages stored on the SMSC
+        encoding: `encoding <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
+                    used to encode messages been sent to SMSC. The encoding should be one of
+                    the encodings recognised by the SMPP specification. See section 5.2.19 of
+                    SMPP spec. If you want to use your own custom codec implementation for an
+                    encoding, make sure to pass it to
+                    :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
+        sm_default_msg_id: Indicates the short message to send from a list of predefined
+        message_payload: Optional parameter message_payload, needs special handling
+        optional_params: List of optional parameters, if any
+        auto_message_payload: Automatically use message_payload if message
+                                does not fit in short_message
+        error_handling: same meaning as the `errors` argument to Python's
+                        `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
+                        method
+    '''
+    short_message: str = ''
+    source: PhoneNumber = PhoneNumber('')
+    destination: PhoneNumber = PhoneNumber('')
+    service_type: str = 'CMT'
+    esm_class: int = 0x00000000
+    protocol_id: int = 0x00000000
+    priority_flag:int = 0x00000000
+    schedule_delivery_time: Optional[Union[datetime, timedelta]] = None
+    validity_period: Optional[Union[datetime, timedelta]] = None
+    registered_delivery: int = 0b00000001
+    replace_if_present_flag: int = 0x00000000
+    encoding: Optional[str] = None
+    sm_default_msg_id: int = 0x00000000
+    message_payload: str = ''
+    optional_params: Optional[List[OptionalParam]] = None
+    auto_message_payload: bool = True
+    error_handling: str = 'strict'
+
+    def __post_init__(self) -> None:
+        check_param(self.short_message, 'short_message', str)
+        check_param(self.source, 'source', PhoneNumber)
+        check_param(self.destination, 'destination', PhoneNumber)
+        check_param(self.service_type, 'service_type', str)
+        check_param(self.esm_class, 'esm_class', int)
+        check_param(self.protocol_id, 'protocol_id', int)
+        check_param(self.priority_flag, 'priority_flag', int)
+        check_param(self.schedule_delivery_time, 'schedule_delivery_time', (datetime, timedelta),
                     optional=True)
-        check_param(validity_period, 'validity_period', (datetime, timedelta), optional=True)
-        check_param(registered_delivery, 'registered_delivery', int)
-        check_param(replace_if_present_flag, 'replace_if_present_flag', int)
-        check_param(encoding, 'encoding', str, optional=True)
-        check_param(sm_default_msg_id, 'sm_default_msg_id', int)
-        check_param(message_payload, 'message_payload', str)
-        check_param(optional_params, 'optional_params', (list, tuple))
-        check_param(auto_message_payload, 'auto_message_payload', bool)
-        check_param(error_handling, 'error_handling', str)
+        check_param(self.validity_period, 'validity_period', (datetime, timedelta), optional=True)
+        check_param(self.registered_delivery, 'registered_delivery', int)
+        check_param(self.replace_if_present_flag, 'replace_if_present_flag', int)
+        check_param(self.encoding, 'encoding', str, optional=True)
+        check_param(self.sm_default_msg_id, 'sm_default_msg_id', int)
+        check_param(self.message_payload, 'message_payload', str)
+        check_param(self.optional_params, 'optional_params', list, optional=True)
+        check_param(self.auto_message_payload, 'auto_message_payload', bool)
+        check_param(self.error_handling, 'error_handling', str)
 
-        for opt_param in optional_params:
+        if self.optional_params is None:
+            self.optional_params = []
+
+        for opt_param in self.optional_params:
             if not isinstance(opt_param, OptionalParam):
                 raise ValueError('`optional_params` should be a list of OptionalParam objects')
             if opt_param.tag == OptionalTag.MESSAGE_PAYLOAD:
                 raise ValueError('`OptionalTag.MESSAGE_PAYLOAD` cannot be included in '
                                  '`optional_params`. Use `message_payload` parameter instead.')
 
-        if not short_message and not message_payload:
+        if not self.short_message and not self.message_payload:
             raise ValueError('Either short_message or message_payload must be specified')
-        if short_message and message_payload:
+        if self.short_message and self.message_payload:
             raise ValueError('Specifying both short_message and message_payload is not allowed')
-
-        self.short_message: str = short_message
-        self.source: PhoneNumber = source
-        self.destination: PhoneNumber = destination
-        self.service_type: str = service_type
-        self.esm_class: int = esm_class
-        self.protocol_id: int = protocol_id
-        self.priority_flag: int = priority_flag
-        self.schedule_delivery_time: Optional[Union[datetime, timedelta]] = schedule_delivery_time
-        self.validity_period: Optional[Union[datetime, timedelta]] = validity_period
-        self.registered_delivery: int = registered_delivery
-        self.replace_if_present_flag: int = replace_if_present_flag
-        self.encoding: Optional[str] = encoding
-        self.sm_default_msg_id: int = sm_default_msg_id
-        self.message_payload: str = message_payload
-        self.optional_params: Sequence[OptionalParam] = optional_params
-        self.auto_message_payload: bool = auto_message_payload
-        self.error_handling: str = error_handling
+        if not self.destination.number:
+            raise ValueError('Destination number must be specified')
+        super().__post_init__()
         # default_encoding and custom_codecs need to be set by ESME/SMSC before sending
-        self._default_encoding: str = ''
+        self._default_encoding: str = DEFAULT_ENCODING
         self._custom_codecs: Optional[Dict[str, CodecInfo]] = None
+
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.SUBMIT_SM
 
     @staticmethod
     def datetime_to_smpp_time(time_object: Optional[Union[datetime, timedelta]]) -> str:
@@ -334,7 +337,7 @@ class Sm(SmppMessage, Trackable):
             + pack('!BBB', data_coding, self.sm_default_msg_id, sm_length)
             + encoded_short_message
             + encoded_message_payload
-            + b''.join(opt_param.tlv for opt_param in self.optional_params)
+            + b''.join(opt_param.tlv for opt_param in self.optional_params or [])
             # optional params may be included in ANY ORDER within
             # the `Optional Parameters` section of the SMPP PDU.
         )
@@ -342,7 +345,7 @@ class Sm(SmppMessage, Trackable):
 
     @classmethod
     def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> Sm:
+                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
         def get_c_octet_string() -> str:
             nonlocal index
             str_end: int = pdu.index(NULL, index)
@@ -418,6 +421,7 @@ class Sm(SmppMessage, Trackable):
                 optional_params.append(OptionalParam(tag, str_value))
 
         return cls(
+            sequence_num=header.sequence_num,
             short_message=short_message,
             source=source,
             destination=destination,
@@ -429,34 +433,30 @@ class Sm(SmppMessage, Trackable):
             validity_period=cls.smpp_time_to_datetime(validity_period),
             registered_delivery=registered_delivery,
             replace_if_present_flag=replace_if_present_flag,
-            encoding=encoding,
+            encoding=encoding if encoding != DEFAULT_ENCODING else None,
             sm_default_msg_id=sm_default_msg_id,
             message_payload=message_payload,
             optional_params=optional_params,
-            auto_message_payload=True,
-            error_handling='strict',
-            sequence_num=header.sequence_num,
-            log_id='',
-            extra_data='',
         )
 
 
-class SmResp(SmppMessage):
+@dataclass
+class SubmitSmResp(Trackable, SmppMessage):
     '''
-    SubmitSmResp and DeliverSmResp have identical structure, so they share the same parent class.
-    '''
+    Represents the submit_sm_resp SMPP message type.
 
-    def __init__(self,sequence_num: int, command_status: SmppCommandStatus,
-                 message_id: str) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-            message_id: Message ID assigned by the SMSC.
-        '''
-        super().__init__(sequence_num, command_status)
-        # Params are not checked as this message is not supposed to be created by user directly
-        self.message_id: str = message_id
+    Parameters:
+        message_id: Message ID assigned by the SMSC.
+    '''
+    message_id: str = ''
+
+    def __post_init__(self) -> None:
+        check_param(self.message_id, 'message_id', str)
+        super().__post_init__()
+
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.SUBMIT_SM_RESP
 
     def pdu(self) -> bytes:
         body: bytes = self.message_id.encode('ascii') + NULL
@@ -468,171 +468,29 @@ class SmResp(SmppMessage):
         # pylint: disable=unused-argument
         # Decode the full body of the PDU, minus terminating NULL char
         message_id: str = pdu[PDU_HEADER_LENGTH:header.pdu_length-1].decode('ascii')
-        return cls(header.sequence_num, header.command_status, message_id)
-
-
-class SubmitSm(Sm):
-    '''
-    The code representation of the `submit_sm` pdu that will get queued into a broker.
-
-    Usage:
-
-    .. highlight:: python
-    .. code-block:: python
-
-        import os
-        from aiosmpplib import ESME, PhoneNumber, SubmitSm
-
-        esme = ESME(
-            smsc_host='127.0.0.1',
-            smsc_port=2775,
-            system_id='smppclient1',
-            password=os.getenv('password', 'password'),
+        return cls(
+            sequence_num=header.sequence_num,
+            message_id=message_id,
+            command_status=header.command_status,
         )
-        msg = SubmitSm(
-            short_message='hello world',
-            source=PhoneNumber('255700111222'),
-            destination=PhoneNumber('255799000888'),
-            log_id='some-id',
-            ms_validity=1,
-        )
-        await esme.broker.enqueue(msg)
+
+
+@dataclass
+class DeliverSm(SubmitSm):
     '''
+    Represents the deliver_sm SMPP message type.
 
-    def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
-                 service_type: str='CMT', esm_class: int=0b00000011, protocol_id: int=0x00000000,
-                 priority_flag:int=0x00000000,
-                 schedule_delivery_time: Optional[Union[datetime, timedelta]]=None,
-                 validity_period: Optional[Union[datetime, timedelta]]=None,
-                 registered_delivery: int=0b00000001, replace_if_present_flag: int=0x00000000,
-                 encoding: Optional[str]=None, sm_default_msg_id: int=0x00000000,
-                 message_payload: str='', optional_params: Sequence[OptionalParam]=(),
-                 auto_message_payload: bool=True, error_handling: str='strict',
-                 sequence_num: int=0, log_id: str='', extra_data: str='') -> None:
-        '''
-        Parameters:
-            short_message: Message to send to SMSC
-            source: The phone number/identifier of the message sender
-            destination: The phone number/identifier of the message recipient
-            service_type: Indicates the SMS Application service associated with the message
-            esm_class: Indicates Message Mode & Message Type.
-            protocol_id: Protocol Identifier. Network specific field.
-            priority_flag: Designates the priority level of the message.
-            schedule_delivery_time: Time at which the message delivery should be first attempted.
-            validity_period: The validity period of this message.
-            registered_delivery: Indicator to signify if an SMSC delivery receipt
-                                 or an SME acknowledgement is required.
-            replace_if_present_flag: Flag indicating if submitted message should replace
-                                     an existing message.
-                               ('canned') short messages stored on the SMSC
-            encoding: `encoding <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
-                       used to encode messages been sent to SMSC. The encoding should be one of
-                       the encodings recognised by the SMPP specification. See section 5.2.19 of
-                       SMPP spec. If you want to use your own custom codec implementation for an
-                       encoding, make sure to pass it to
-                       :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
-            sm_default_msg_id: Indicates the short message to send from a list of predefined
-            message_payload: Optional parameter message_payload, needs special handling
-            optional_params: List of optional parameters, if any
-            auto_message_payload: Automatically use message_payload if message
-                                  does not fit in short_message
-            error_handling: same meaning as the `errors` argument to Python's
-                            `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
-                            method
-            sequence_num: SMPP sequence number
-            log_id: A unique identifier of this request
-            extra_data: A custom string associated with this request.
-        '''
-        super().__init__(short_message, source, destination, service_type, esm_class, protocol_id,
-                         priority_flag, schedule_delivery_time, validity_period,
-                         registered_delivery, replace_if_present_flag, encoding, sm_default_msg_id,
-                         message_payload, optional_params, auto_message_payload, error_handling,
-                         sequence_num, log_id, extra_data)
+    Parameters:
+        receipt: A dictionary containing delivery receipt data
+    '''
+    receipt: Optional[Dict[str, Any]] = None
 
-    @property
-    def smpp_command(self) -> SmppCommand:
-        return SmppCommand.SUBMIT_SM
-
-
-class SubmitSmResp(SmResp, Trackable):
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK, message_id: str='',
-                 log_id: str='', extra_data: str='') -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-            message_id: Message ID assigned by the SMSC.
-            log_id: A unique identifier of original SubmitSm request.
-            extra_data: A custom string associated with original SubmitSm request.
-        '''
-        SmResp.__init__(self, sequence_num, command_status, message_id)
-        Trackable.__init__(self, log_id, extra_data)
-
-    @property
-    def smpp_command(self) -> SmppCommand:
-        return SmppCommand.SUBMIT_SM_RESP
-
-
-class DeliverSm(Sm):
-    def __init__(self, short_message: str, source: PhoneNumber, destination: PhoneNumber,
-                 service_type: str='CMT', esm_class: int=0b00000000, protocol_id: int=0x00000000,
-                 priority_flag:int=0x00000000,
-                 schedule_delivery_time: Optional[Union[datetime, timedelta]]=None,
-                 validity_period: Optional[Union[datetime, timedelta]]=None,
-                 registered_delivery: int=0b00000001, replace_if_present_flag: int=0x00000000,
-                 encoding: Optional[str]=None, sm_default_msg_id: int=0x00000000,
-                 message_payload: str='', optional_params: Sequence[OptionalParam]=(),
-                 auto_message_payload: bool=True, error_handling: str='strict',
-                 sequence_num: int=0, log_id: str='', extra_data: str='',
-                 receipt: Optional[Dict[str, Any]]=None) -> None:
-        '''
-        Parameters:
-            short_message: Message to send to SMSC
-            source: The phone number/identifier of the message sender
-            destination: The phone number/identifier of the message recipient
-            service_type: Indicates the SMS Application service associated with the message
-            esm_class: Indicates Message Mode & Message Type.
-            protocol_id: Protocol Identifier. Network specific field.
-            priority_flag: Designates the priority level of the message.
-            schedule_delivery_time: Time at which the message delivery should be first attempted.
-            validity_period: The validity period of this message.
-            registered_delivery: Indicator to signify if an SMSC delivery receipt
-                                 or an SME acknowledgement is required.
-            replace_if_present_flag: Flag indicating if submitted message should replace
-                                     an existing message.
-                               ('canned') short messages stored on the SMSC
-            encoding: `encoding <https://docs.python.org/3/library/codecs.html#standard-encodings>`_
-                       used to encode messages been sent to SMSC. The encoding should be one of
-                       the encodings recognised by the SMPP specification. See section 5.2.19 of
-                       SMPP spec. If you want to use your own custom codec implementation for an
-                       encoding, make sure to pass it to
-                       :py:attr:`aiosmpplib.ESME.custom_codecs <aiosmpplib.ESME.custom_codecs>`
-            sm_default_msg_id: Indicates the short message to send from a list of predefined
-            message_payload: Optional parameter message_payload, needs special handling
-            optional_params: List of optional parameters, if any
-            auto_message_payload: Automatically use message_payload if message
-                                  does not fit in short_message
-            error_handling: same meaning as the `errors` argument to Python's
-                            `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
-                            method
-            sequence_num: SMPP sequence number
-            log_id: A unique identifier of this request
-            extra_data: A custom string associated with this request.
-            receipt: A dictionary containing delivery receipt data
-        '''
+    def __post_init__(self) -> None:
+        check_param(self.receipt, 'receipt', dict, optional=True)
+        receipt: Optional[Dict[str, Any]] = self.receipt
         if receipt:
-            esm_class = 0b00000100
-        super().__init__(short_message, source, destination, service_type, esm_class, protocol_id,
-                         priority_flag, schedule_delivery_time, validity_period,
-                         registered_delivery, replace_if_present_flag, encoding, sm_default_msg_id,
-                         message_payload, optional_params, auto_message_payload, error_handling,
-                         sequence_num, log_id, extra_data)
-
-        check_param(receipt, 'receipt', dict, optional=True)
-
-        self.receipt: Optional[Dict[str, Any]] = receipt
-        if receipt and not short_message:
+            self.esm_class = 0b00000100
+        if receipt and not self.short_message:
             # Encode receipt in short_message text
             # Receipt format is SMSC-specific, but it usually follows the following pattern
             msg_id: str = receipt.get('id', '') # Message ID allocated by the SMSC when submitted.
@@ -650,6 +508,7 @@ class DeliverSm(Sm):
             self.short_message = (f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
                                   f' submit date:{submit_date_str} done date:{done_date_str}'
                                   f' stat:{stat} err:{err} Text:{text:20}')
+        super().__post_init__()
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -658,6 +517,9 @@ class DeliverSm(Sm):
     @classmethod
     def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
                  custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+        deliver_sm: SmppMessage = super().from_pdu(pdu, header, default_encoding, custom_codecs)
+        assert isinstance(deliver_sm, DeliverSm) # For type checkers
+
         def get_receipt_param() -> Tuple[Optional[str], Optional[str]]:
             nonlocal index
             nonlocal deliver_sm
@@ -672,9 +534,6 @@ class DeliverSm(Sm):
             value: str = deliver_sm.short_message[index:str_end]
             index = str_end + 1
             return param, value
-
-        deliver_sm: Sm = super().from_pdu(pdu, header, default_encoding, custom_codecs)
-        assert isinstance(deliver_sm, DeliverSm) # For type checkers
 
         # Only middle 4 bits are relevant: 0 = incoming SMS, 1 = delivery receipt
         message_class: int = (deliver_sm.esm_class & 0b00111100) >> 2
@@ -698,7 +557,7 @@ class DeliverSm(Sm):
                     rcpt_data[rcpt_param] = rcpt_value
 
             smsc_message_id: Optional[str] = rcpt_data.get('id') # Get message ID from report data
-            if not smsc_message_id:
+            if not smsc_message_id and deliver_sm.optional_params:
                 # Message ID not found, check if receipted_message_id param exists
                 id_param: Optional[OptionalParam] = next((
                     param for param in deliver_sm.optional_params
@@ -711,66 +570,48 @@ class DeliverSm(Sm):
         return deliver_sm
 
 
-class DeliverSmResp(SmResp):
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK,
-                 message_id: str='') -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-            message_id: Message ID assigned by the SMSC (unused and always empty).
-        '''
-        super().__init__(sequence_num, command_status, message_id)
-
+@dataclass
+class DeliverSmResp(SubmitSmResp):
+    '''
+    Represents the deliver_sm_resp SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.DELIVER_SM_RESP
 
 
-class GenericNack(SmppMessage, Trackable):
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_RUNKNOWNERR,
-                 log_id: str='', extra_data: str='') -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-            log_id: A unique identifier of original SubmitSm request.
-            extra_data: A custom string associated with original SubmitSm request.
-        '''
-        SmppMessage.__init__(self, sequence_num, command_status)
-        Trackable.__init__(self, log_id, extra_data)
-
+@dataclass
+class GenericNack(Trackable, SmppMessage):
+    '''
+    Represents the generic_nack SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.GENERIC_NACK
 
 
+@dataclass
 class BindTransceiver(SmppMessage):
-    def __init__(self, system_id: str, password: str, system_type: str, interface_version: int,
-                 addr_ton: TON, addr_npi: NPI, address_range: str, sequence_num: int=0) -> None:
-        '''
-        Parameters:
-            system_id: Identifies the ESME system requesting to bind as a transceiver.
-            password: Password used to authenticate the ESME requesting to bind.
-            system_type: Identifies the type of ESME system requesting to bind as a transceiver.
-            interface_version: Indicates the version of the SMPP protocol supported by the ESME.
-            addr_ton: Type of Number for ESME address(es) served via this SMPP session.
-            addr_npi: Numbering Plan Indicator for ESME address(es) served via this SMPP session.
-            address_range: A single ESME address or a range of ESME addresses served via
-                           this SMPP transceiver session.
-            sequence_num: SMPP sequence number
-        '''
-        super().__init__(sequence_num)
-        # Params are not checked as this message is not supposed to be created by user directly
-        self.system_id: str = system_id
-        self.password: str = password
-        self.system_type: str = system_type
-        self.interface_version: int = interface_version
-        self.addr_ton: TON = addr_ton
-        self.addr_npi: NPI = addr_npi
-        self.address_range: str = address_range
+    '''
+    Represents the bind_transceiver SMPP message type.
+
+    Parameters:
+        system_id: Identifies the ESME system requesting to bind as a transceiver.
+        password: Password used to authenticate the ESME requesting to bind.
+        system_type: Identifies the type of ESME system requesting to bind as a transceiver.
+        interface_version: Indicates the version of the SMPP protocol supported by the ESME.
+        addr_ton: Type of Number for ESME address(es) served via this SMPP session.
+        addr_npi: Numbering Plan Indicator for ESME address(es) served via this SMPP session.
+        address_range: A single ESME address or a range of ESME addresses served via
+                        this SMPP transceiver session.
+    '''
+    system_id: str = ''
+    password: str = ''
+    system_type: str = ''
+    interface_version: int = SMPP_VERSION_3_4
+    addr_ton: TON = TON.UNKNOWN
+    addr_npi: NPI = NPI.UNKNOWN
+    address_range: str = ''
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -812,7 +653,8 @@ class BindTransceiver(SmppMessage):
         addr_npi: NPI = NPI(get_char())
         address_range: str = get_c_octet_string()
 
-        return BindTransceiver(
+        return cls(
+            sequence_num=header.sequence_num,
             system_id=system_id,
             password=password,
             system_type=system_type,
@@ -820,30 +662,20 @@ class BindTransceiver(SmppMessage):
             addr_ton=addr_ton,
             addr_npi=addr_npi,
             address_range=address_range,
-            sequence_num=header.sequence_num,
         )
 
-    def as_dict(self) -> Dict[str, Any]:
-        result_dict: dict = super().as_dict()
-        result_dict['password'] = '{REDACTED}'
-        return result_dict
 
-
+@dataclass
 class BindTransceiverResp(SmppMessage):
-    def __init__(self, system_id: str, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK,
-                 sc_interface_version: Optional[int]=None) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            system_id: SMSC system ID.
-            command_status: SMPP response status
-            sc_interface_version: Optional SMPP version supported by SMSC.
-        '''
-        super().__init__(sequence_num, command_status)
-        # Params are not checked as this message is not supposed to be created by user directly
-        self.system_id: str = system_id
-        self.sc_interface_version: Optional[int] = sc_interface_version
+    '''
+    Represents the bind_transceiver_resp SMPP message type.
+
+    Parameters:
+        system_id: SMSC system ID.
+        sc_interface_version: Optional SMPP version supported by SMSC.
+    '''
+    system_id: str = ''
+    sc_interface_version: Optional[int] = None
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -868,60 +700,89 @@ class BindTransceiverResp(SmppMessage):
             index += 4
             if index + 1 == header.pdu_length:
                 sc_interface_version = unpack_from('!B', pdu, index)[0]
-        return BindTransceiverResp(system_id, header.sequence_num, header.command_status,
-                                   sc_interface_version)
+        return cls(
+            sequence_num=header.sequence_num,
+            command_status=header.command_status,
+            system_id=system_id,
+            sc_interface_version=sc_interface_version,
+        )
 
 
+@dataclass
+class BindTransmitter(BindTransceiver):
+    '''
+    Represents the bind_transmitter SMPP message type.
+    '''
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.BIND_TRANSMITTER
+
+
+@dataclass
+class BindTransmitterResp(BindTransceiverResp):
+    '''
+    Represents the bind_transmitter_resp SMPP message type.
+    '''
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.BIND_TRANSMITTER_RESP
+
+
+@dataclass
+class BindReceiver(BindTransceiver):
+    '''
+    Represents the bind_receiver SMPP message type.
+    '''
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.BIND_RECEIVER
+
+
+@dataclass
+class BindReceiverResp(BindTransceiverResp):
+    '''
+    Represents the bind_receiver_resp SMPP message type.
+    '''
+    @property
+    def smpp_command(self) -> SmppCommand:
+        return SmppCommand.BIND_RECEIVER_RESP
+
+
+@dataclass
 class EnquireLink(SmppMessage):
-    def __init__(self, sequence_num: int=0) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-        '''
-        super().__init__(sequence_num)
-
+    '''
+    Represents the enquire_link SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.ENQUIRE_LINK
 
 
+@dataclass
 class EnquireLinkResp(SmppMessage):
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-        '''
-        super().__init__(sequence_num, command_status)
-
+    '''
+    Represents the enquire_link_resp SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.ENQUIRE_LINK_RESP
 
 
+@dataclass
 class Unbind(SmppMessage):
-    def __init__(self, sequence_num: int=0) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-        '''
-        super().__init__(sequence_num)
-
+    '''
+    Represents the unbind SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.UNBIND
 
-class UnbindResp(SmppMessage):
-    def __init__(self, sequence_num: int,
-                 command_status: SmppCommandStatus=SmppCommandStatus.ESME_ROK) -> None:
-        '''
-        Parameters:
-            sequence_num: SMPP sequence number
-            command_status: SMPP response status
-        '''
-        super().__init__(sequence_num, command_status)
 
+@dataclass
+class UnbindResp(SmppMessage):
+    '''
+    Represents the unbind_resp SMPP message type.
+    '''
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.UNBIND_RESP
@@ -935,6 +796,10 @@ MESSAGE_TYPE_MAP: Dict[SmppCommand, Type[SmppMessage]] = {
     SmppCommand.DELIVER_SM_RESP: DeliverSmResp,
     SmppCommand.BIND_TRANSCEIVER: BindTransceiver,
     SmppCommand.BIND_TRANSCEIVER_RESP: BindTransceiverResp,
+    SmppCommand.BIND_TRANSMITTER: BindTransmitter,
+    SmppCommand.BIND_TRANSMITTER_RESP: BindTransmitterResp,
+    SmppCommand.BIND_RECEIVER: BindReceiver,
+    SmppCommand.BIND_RECEIVER_RESP: BindReceiverResp,
     SmppCommand.ENQUIRE_LINK: EnquireLink,
     SmppCommand.ENQUIRE_LINK_RESP: EnquireLinkResp,
     SmppCommand.UNBIND: Unbind,

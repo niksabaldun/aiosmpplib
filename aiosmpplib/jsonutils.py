@@ -1,25 +1,20 @@
-from inspect import signature
 import json
 from datetime import datetime, timedelta
-from enum import EnumMeta
+from enum import IntEnum
 from typing import Any, Dict, Optional, Type
 from .protocol import SmppMessage, MESSAGE_TYPE_MAP
 from .state import (NPI, TON, OptionalParam, OptionalTag, PhoneNumber, SmppCommand,
-                    SmppCommandStatus, SmppDataCoding, PduHeader)
+                    SmppCommandStatus, PduHeader)
 
 
-_PUBLIC_ENUMS: Dict[str, EnumMeta] = {
-    'SmppCommand': SmppCommand,
-    'SmppCommandStatus': SmppCommandStatus,
-    'SmppDataCoding': SmppDataCoding,
-    'OptionalTag': OptionalTag,
+_INT_ENUM_PARAMS: Dict[str, Type[IntEnum]] = {
+    'command_status': SmppCommandStatus,
+    'tag': OptionalTag,
 }
 
 
 class SmppJsonEncoder(json.JSONEncoder):
     def default(self, o: Any) -> Any: # pylint: disable=method-hidden; problem is in base module
-        if type(o) in _PUBLIC_ENUMS.values():
-            return {"__enum__": str(o)}
         if isinstance(o, datetime):
             return {
                 '__type__': type(o).__name__,
@@ -67,22 +62,22 @@ class SmppJsonDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, object_hook=self.convert_object, **kwargs)
 
+    def convert_message_param(self, param: str, value: Any) -> Any:
+        if isinstance(value, dict):
+            return self.convert_object(value)
+        if param in _INT_ENUM_PARAMS:
+            return _INT_ENUM_PARAMS[param](value)
+        return value
+
     def convert_object(self, o: dict) -> Any:
-        if '__enum__' in o:
-            try:
-                name, member = o['__enum__'].split('.', maxsplit=1)
-                return getattr(_PUBLIC_ENUMS[name], member)
-            except: # pylint: disable=bare-except
-                return o
         smpp_command_str: Optional[str] = o.pop('__smpp_command__', None)
         if smpp_command_str:
             try:
                 smpp_command: SmppCommand = SmppCommand[smpp_command_str]
                 message_class: Type[SmppMessage]= MESSAGE_TYPE_MAP[smpp_command]
-                if 'command_status' not in signature(message_class.__init__).parameters:
-                    # Requests don't have a command status
-                    o.pop('command_status', None)
-                return message_class(**o)
+                message_dict: dict = {param: self.convert_message_param(param, value)
+                                      for param, value in o.items()}
+                return message_class(**message_dict)
             except: # pylint: disable=bare-except
                 pass
             o['__smpp_command__'] = smpp_command_str
@@ -103,9 +98,9 @@ class SmppJsonDecoder(json.JSONDecoder):
         return o
 
 
-def json_decode(json_data: str):
-    return json.loads(json_data, cls=SmppJsonDecoder)
-
-
 def json_encode(obj: Any):
     return json.dumps(obj, cls=SmppJsonEncoder)
+
+
+def json_decode(json_data: str):
+    return json.loads(json_data, cls=SmppJsonDecoder)

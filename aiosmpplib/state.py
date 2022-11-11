@@ -2,32 +2,14 @@ from dataclasses import dataclass
 from struct import pack
 from enum import IntEnum, auto
 from typing import Dict, Type, Union
+from .utils import check_param
 
-
-class SmppSessionState(IntEnum):
-    '''
-    Represensts the states in which an SMPP session can be in.
-    '''
-
-    # See section 2.2 of SMPP spec document v3.4
-
-    # An ESME has established a network connection to the SMSC
-    # but has not yet issued a Bind request.
-    OPEN = auto()
-    # A connected ESME has requested to bind as an ESME Transmitter (by issuing a
-    # bind_transmitter PDU) and has received a response from the SMSC authorising its bind request.
-    BOUND_TX = auto() # Unused
-    # A connected ESME has requested to bind as an ESME Receiver (by issuing a
-    # bind_receiver PDU) and has received a response from the SMSC authorising its bind request.
-    BOUND_RX = auto() # Unused
-    # A connected ESME has requested to bind as an ESME Transceiver (by issuing a
-    # bind_transceiver PDU) and has received a response from the SMSC authorising its bind request.
-    BOUND_TRX = auto()
-    # An ESME has unbound from the SMSC and has closed the network connection.
-    # The SMSC may also unbind from the ESME.
-    CLOSED = auto()
 
 class SmppCommand(IntEnum):
+    BIND_RECEIVER = 0x00000001
+    BIND_RECEIVER_RESP = 0x80000001
+    BIND_TRANSMITTER = 0x00000002
+    BIND_TRANSMITTER_RESP = 0x80000002
     BIND_TRANSCEIVER = 0x00000009
     BIND_TRANSCEIVER_RESP = 0x80000009
     UNBIND = 0x00000006
@@ -41,10 +23,6 @@ class SmppCommand(IntEnum):
     GENERIC_NACK = 0x80000000
     # aiosmpplib currently does not handle the following SMPP commands.
     # Open a github issue if you require support for a command in this list.
-    BIND_RECEIVER = 0x00000001
-    BIND_RECEIVER_RESP = 0x80000001
-    BIND_TRANSMITTER = 0x00000002
-    BIND_TRANSMITTER_RESP = 0x80000002
     QUERY_SM = 0x00000003
     QUERY_SM_RESP = 0x80000003
     REPLACE_SM = 0x00000007
@@ -59,13 +37,13 @@ class SmppCommand(IntEnum):
     DATA_SM_RESP = 0x80000103
 
 COMMAND_RESPONSE_MAP: Dict[SmppCommand, SmppCommand] = {
+    SmppCommand.BIND_RECEIVER: SmppCommand.BIND_RECEIVER_RESP,
+    SmppCommand.BIND_TRANSMITTER: SmppCommand.BIND_TRANSMITTER_RESP,
     SmppCommand.BIND_TRANSCEIVER: SmppCommand.BIND_TRANSCEIVER_RESP,
     SmppCommand.UNBIND: SmppCommand.UNBIND_RESP,
     SmppCommand.SUBMIT_SM: SmppCommand.SUBMIT_SM_RESP,
     SmppCommand.DELIVER_SM: SmppCommand.DELIVER_SM_RESP,
     SmppCommand.ENQUIRE_LINK: SmppCommand.ENQUIRE_LINK_RESP,
-    SmppCommand.BIND_RECEIVER: SmppCommand.BIND_RECEIVER_RESP,
-    SmppCommand.BIND_TRANSMITTER: SmppCommand.BIND_TRANSMITTER_RESP,
     SmppCommand.QUERY_SM: SmppCommand.QUERY_SM_RESP,
     SmppCommand.REPLACE_SM: SmppCommand.REPLACE_SM_RESP,
     SmppCommand.CANCEL_SM: SmppCommand.CANCEL_SM_RESP,
@@ -230,6 +208,58 @@ class SmppCommandStatus(IntEnum):
         return 'Unknown Error' # self.value == 0x000000FF
 
 
+class SmppSessionState(IntEnum):
+    '''
+    Represensts the states in which an SMPP session can be in.
+    '''
+    # See section 2.2 of SMPP spec document v3.4
+
+    # An ESME has established a network connection to the SMSC
+    # but has not yet issued a Bind request.
+    OPEN = auto()
+    # A connected ESME has requested to bind as an ESME Transmitter (by issuing a
+    # bind_transmitter PDU) and has received a response from the SMSC authorising its bind request.
+    BOUND_TX = auto()
+    # A connected ESME has requested to bind as an ESME Receiver (by issuing a
+    # bind_receiver PDU) and has received a response from the SMSC authorising its bind request.
+    BOUND_RX = auto()
+    # A connected ESME has requested to bind as an ESME Transceiver (by issuing a
+    # bind_transceiver PDU) and has received a response from the SMSC authorising its bind request.
+    BOUND_TRX = auto()
+    # An ESME has unbound from the SMSC and has closed the network connection.
+    # The SMSC may also unbind from the ESME.
+    CLOSED = auto()
+
+
+class BindMode(IntEnum):
+    '''
+    Represensts the ESME bind mode.
+    '''
+    TRANSMITTER = auto()
+    RECEIVER = auto()
+    TRANSCEIVER = auto()
+
+    @property
+    def smpp_command(self) -> SmppCommand:
+        if self == BindMode.TRANSMITTER:
+            return SmppCommand.BIND_TRANSMITTER
+        if self == BindMode.RECEIVER:
+            return SmppCommand.BIND_RECEIVER
+        return SmppCommand.BIND_TRANSCEIVER
+
+    @property
+    def session_state(self) -> SmppSessionState:
+        if self == BindMode.TRANSMITTER:
+            return SmppSessionState.BOUND_TX
+        if self == BindMode.RECEIVER:
+            return SmppSessionState.BOUND_TX
+        return SmppSessionState.BOUND_TRX
+
+    @property
+    def description(self) -> str:
+        return self.name.lower()
+
+
 class SmppDataCoding(IntEnum):
     '''
     Represents the various SMPP data encodings.
@@ -254,7 +284,6 @@ class SmppDataCoding(IntEnum):
     iso8859_5 = 0b00000110
     iso8859_8 = 0b00000111
     # see: https://stackoverflow.com/a/14488478/2768067
-    utf_16_be = 0b00001000
     ucs2 = 0b00001000
     shift_jis = 0b00001001
     iso2022jp = 0b00001010
@@ -484,6 +513,8 @@ class OptionalParam():
     # b'\x00\x1e\x00\x14ThisIsSomeMessageId\x00'
 
     def __post_init__(self):
+        check_param(self.tag, 'tag', OptionalTag)
+        check_param(self.value, 'value', self.tag.data_type)
         if self.tag == OptionalTag.MESSAGE_PAYLOAD:
             # Special case Octet String, with same encoding as short_message
             # It can't be built here, because encoding from both ESME and SubmitSm is needed
@@ -618,8 +649,13 @@ class PhoneNumber():
     SMPP phone number representation.
     '''
     number: str
-    ton: TON = TON.INTERNATIONAL
-    npi: NPI = NPI.ISDN
+    ton: TON = TON.UNKNOWN
+    npi: NPI = NPI.UNKNOWN
+
+    def __post_init__(self):
+        check_param(self.number, 'number', str)
+        check_param(self.ton, 'ton', TON)
+        check_param(self.npi, 'npi', NPI)
 
 
 @dataclass
@@ -634,6 +670,7 @@ class PduHeader():
 
 
 class SmppError(Exception):
-    def __init__(self, command_status: SmppCommandStatus) -> None:
+    def __init__(self, smpp_command: SmppCommand, command_status: SmppCommandStatus) -> None:
         super().__init__()
+        self.smpp_command: SmppCommand = smpp_command
         self.command_status: SmppCommandStatus = command_status
