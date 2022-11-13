@@ -161,7 +161,7 @@ class SubmitSm(Trackable, SmppMessage):
     short_message: str = ''
     source: PhoneNumber = PhoneNumber('')
     destination: PhoneNumber = PhoneNumber('')
-    service_type: str = 'CMT'
+    service_type: str = ''
     esm_class: int = 0x00000000
     protocol_id: int = 0x00000000
     priority_flag:int = 0x00000000
