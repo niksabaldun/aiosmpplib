@@ -216,6 +216,8 @@ class GSM7BitCodec(SmsCodec):
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
     def encode(self, input: str, errors: str='strict') -> Tuple[bytes, int]:
+        if not isinstance(input, str):
+            raise TypeError('Expected str input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 
@@ -224,18 +226,27 @@ class GSM7BitCodec(SmsCodec):
 
 
     def decode(self, input: bytes, errors: str='strict') -> Tuple[str, int]:
+        if not isinstance(input, bytes):
+            raise TypeError('Expected bytes input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 
-        # Unpack septets from octets before lookup
         result: str = ''
         escaped: bool = False
+        index: int
         byte: int
         char: str
-        for byte in input:
+        for index, byte in enumerate(input):
             char, escaped = self._decode_char(byte, escaped)
             if not escaped:
-                result += char
+                if not char:
+                    if errors == 'strict':
+                        raise UnicodeDecodeError(self.get_name(), bytes(byte), index, index + 1,
+                                                 'Unsupported character')
+                    if errors == 'replace':
+                        result += chr(QUESTION_MARK)
+                else:
+                    result += char
         consumed: int = len(input)
         if escaped:
             # Sequence ended in escape char, this should not happen
@@ -253,7 +264,7 @@ class GSM7BitCodec(SmsCodec):
             return '', True
         if escaped:
             return GSM_EXTENDED_DECODE_MAP.get(char_code, chr(NO_BREAK_SPACE)), False
-        return GSM_BASIC_DECODE_MAP[char_code], False
+        return GSM_BASIC_DECODE_MAP.get(char_code, ''), False
 
 
     def to_gsm_codes(self, text: str, errors: str='strict') -> List[int]:
@@ -299,6 +310,8 @@ class GSM7BitPackedCodec(GSM7BitCodec):
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
     def encode(self, input: str, errors: str='strict') -> Tuple[bytes, int]:
+        if not isinstance(input, str):
+            raise TypeError('Expected str input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 
@@ -325,6 +338,8 @@ class GSM7BitPackedCodec(GSM7BitCodec):
 
 
     def decode(self, input: bytes, errors: str='strict') -> Tuple[str, int]:
+        if not isinstance(input, bytes):
+            raise TypeError('Expected bytes input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 

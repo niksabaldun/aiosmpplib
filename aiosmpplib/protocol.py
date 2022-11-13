@@ -543,7 +543,7 @@ class DeliverSm(SubmitSm):
             return param, value
 
         rcpt_data: Dict[str, Any] = {}
-        index = 0
+        index: int = 0
         rcpt_param: Optional[str]
         rcpt_value: Optional[str]
         while True:
