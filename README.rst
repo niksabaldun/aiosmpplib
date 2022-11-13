@@ -146,9 +146,9 @@ Sending messages is a lot more involved.
            'dlvrd': int # Number of short messages delivered.
            'submit date': datetime # The time and date at which the message was submitted.
            'done date': datetime # The time and date at which the message reached its final state.
-           'stat': str = # The final status of the message.
-           'err': str = # Network specific error code or an SMSC error code.
-           'text': str = # The first 20 characters of the short message.
+           'stat': str # The final status of the message.
+           'err': str # Network specific error code or an SMSC error code.
+           'text': str # The first 20 characters of the short message.
        }
    
    The ``stat`` parameter should have one the following values:
@@ -168,7 +168,6 @@ ____________________________
 
 .. code-block:: python
 
-    import asyncio
     from aiosmpplib import AbstractHook, SmppCommandStatus
     from aiosmpplib import DeliverSm, SubmitSm, SubmitSmResp, GenericNack, SmppMessage, Trackable
 
