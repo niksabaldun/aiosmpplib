@@ -10,11 +10,11 @@ def assert_valid_sequence(sequence_num: int) -> None:
                          f'{MIN_SEQUENCE_NUMBER}-{MAX_SEQUENCE_NUMBER} allowed by SMPP spec.')
 
 
-class BaseSequenceGenerator(ABC):
+class AbstractSequenceGenerator(ABC):
     '''
     Interface that must be implemented to satisfy aiosmpplib sequence generator.
     User implementations should inherit this class and
-    implement the :func:`next_sequence <BaseSequenceGenerator.next_sequence>` methods.
+    implement the :func:`next_sequence <AbstractSequenceGenerator.next_sequence>` methods.
 
     In SMPP, sequence_num is an Integer which allows requests and responses to be correlated.
     The sequence_num should increase monotonically and be in the range `1` to `2,147,483,647`
@@ -25,14 +25,14 @@ class BaseSequenceGenerator(ABC):
     @abstractmethod
     def next_sequence(self) -> int:
         '''
-        method that returns a monotonically increasing Integer in the range `1` to `2,147,483,647`
+        Returns a monotonically increasing integer in the range `1` to `2,147,483,647`
         '''
         raise NotImplementedError()
 
 
-class SimpleSequenceGenerator(BaseSequenceGenerator):
+class SimpleSequenceGenerator(AbstractSequenceGenerator):
     '''
-    This is an implementation of BaseSequenceGenerator.
+    This is an implementation of AbstractSequenceGenerator.
     '''
 
     def __init__(self) -> None:

@@ -5,13 +5,13 @@ from .protocol import SmppMessage
 from .utils import check_param
 
 
-class BaseHook(ABC):
+class AbstractHook(ABC):
     '''
     Interface that must be implemented to satisfy aiosmpplib hooks.
     User implementations should inherit this class and implement methods:
-        :func:`sending <BaseHook.sending>` - Called before sending data to SMPP peer
-        :func:`received <BaseHook.received>` - Called after receiving data from SMPP peer
-        :func:`send_error <BaseHook.send_error>` - Called if error occured when building
+        :func:`sending <AbstractHook.sending>` - Called before sending data to SMPP peer
+        :func:`received <AbstractHook.received>` - Called after receiving data from SMPP peer
+        :func:`send_error <AbstractHook.send_error>` - Called if error occured when building
         or transmitting SubmitSm message
     '''
 
@@ -56,9 +56,9 @@ class BaseHook(ABC):
         raise NotImplementedError()
 
 
-class SimpleHook(BaseHook):
+class SimpleHook(AbstractHook):
     '''
-    This is an implementation of BaseHook.
+    This is an implementation of AbstractHook.
     When this class is called, it just logs the request or response.
     '''
 

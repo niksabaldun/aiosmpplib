@@ -5,11 +5,11 @@ from .log import StructuredLogger
 from .utils import check_param
 
 
-class BaseRateLimiter(ABC):
+class AbstractRateLimiter(ABC):
     '''
     This is the interface that must be implemented to satisfy aiosmpplib rate limiting.
     User implementations should inherit this class and
-    implement the :func:`limit <BaseRateLimiter.limit>` method.
+    implement the :func:`limit <AbstractRateLimiter.limit>` method.
 
     It may be important to control the rate at which the ESME sends requests to the SMSC.
     aiosmpplib lets you do this, by allowing you to specify a custom rate limiter.
@@ -23,9 +23,9 @@ class BaseRateLimiter(ABC):
         raise NotImplementedError()
 
 
-class SimpleRateLimiter(BaseRateLimiter):
+class SimpleRateLimiter(AbstractRateLimiter):
     '''
-    This is an implementation of BaseRateLimiter.
+    This is an implementation of AbstractRateLimiter.
 
     It does rate limiting using a
     `token bucket rate limiting algorithm <https://en.wikipedia.org/wiki/Token_bucket>`_

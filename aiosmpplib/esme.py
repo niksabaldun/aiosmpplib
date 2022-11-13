@@ -5,17 +5,17 @@ from asyncio import StreamReader, StreamWriter, Task, CancelledError, Incomplete
 from codecs import CodecInfo
 from string import ascii_lowercase, digits
 from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple, Type, TypeVar, Union
-from .broker import BaseBroker, SimpleBroker
-from .correlator import BaseCorrelator, SimpleCorrelator
-from .hook import BaseHook, SimpleHook
+from .broker import AbstractBroker, SimpleBroker
+from .correlator import AbstractCorrelator, SimpleCorrelator
+from .hook import AbstractHook, SimpleHook
 from .log import ERROR, WARNING, INFO, StructuredLogger, Handler
 from .protocol import (DEFAULT_ENCODING, MESSAGE_TYPE_MAP, PDU_HEADER_LENGTH, SMPP_VERSION_3_4,
                        SmppMessage, GenericNack, SubmitSm, SubmitSmResp, DeliverSm,
                        BindReceiver, BindTransmitter, BindTransceiver, EnquireLink, Unbind)
-from .ratelimiter import BaseRateLimiter
-from .retrytimer import BaseRetryTimer, SimpleExponentialBackoff
-from .sequence import BaseSequenceGenerator, SimpleSequenceGenerator, assert_valid_sequence
-from .throttle import BaseThrottleHandler, SimpleThrottleHandler
+from .ratelimiter import AbstractRateLimiter
+from .retrytimer import AbstractRetryTimer, SimpleExponentialBackoff
+from .sequence import AbstractSequenceGenerator, SimpleSequenceGenerator, assert_valid_sequence
+from .throttle import AbstractThrottleHandler, SimpleThrottleHandler
 from .state import (COMMAND_RESPONSE_MAP, RESPONSE_COMMAND_MAP, NPI, TON, PduHeader, BindMode,
                     SmppCommand, SmppDataCoding, SmppError, SmppSessionState, SmppCommandStatus)
 from .utils import check_param
@@ -66,13 +66,13 @@ class ESME:
                  log_metadata: Optional[Dict[str, Any]]=None,
                  log_handler: Optional[Handler]=None,
                  log_include_timestamp: bool=True,
-                 hook: Optional[BaseHook]=None,
-                 broker: Optional[BaseBroker]=None,
-                 rate_limiter: Optional[BaseRateLimiter]=None,
-                 sequence_generator: Optional[BaseSequenceGenerator]=None,
-                 throttle_handler: Optional[BaseThrottleHandler]=None,
-                 correlator: Optional[BaseCorrelator]=None,
-                 retry_timer: Optional[BaseRetryTimer]=None,
+                 hook: Optional[AbstractHook]=None,
+                 broker: Optional[AbstractBroker]=None,
+                 rate_limiter: Optional[AbstractRateLimiter]=None,
+                 sequence_generator: Optional[AbstractSequenceGenerator]=None,
+                 throttle_handler: Optional[AbstractThrottleHandler]=None,
+                 correlator: Optional[AbstractCorrelator]=None,
+                 retry_timer: Optional[AbstractRetryTimer]=None,
                  socket_timeout: float=30.0,
                  custom_codecs: Optional[Dict[str, CodecInfo]]=None,
                  default_encoding: str=DEFAULT_ENCODING,
@@ -101,16 +101,16 @@ class ESME:
             log_metadata: Metadata that will be included in all log statements
             log_handler: Python logging handler to use for logging.
             log_include_timestamp: Whether to prefix log entries with datetime in ISO8601 format.
-            hook: A BaseHook instance implementing methods to be called
+            hook: A AbstractHook instance implementing methods to be called
                   just before sending request to SMSC and just after getting response from SMSC
-            rate_limiter: A BaseRateLimiter instance implementing rate limitation
-            sequence_generator: A BaseSequenceGenerator instance used to generate sequence_nums
-            throttle_handler: A BaseThrottleHandler instance implementing logic for
+            rate_limiter: A AbstractRateLimiter instance implementing rate limitation
+            sequence_generator: A AbstractSequenceGenerator instance used to generate sequence_nums
+            throttle_handler: A AbstractThrottleHandler instance implementing logic for
                               dealing with throttled responses from SMSC
-            correlator: A BaseCorrelator instance used to store relations
+            correlator: A AbstractCorrelator instance used to store relations
                         between SMPP requests and responses, and also
                         between SubmitSM requests and DeliverSm receipts.
-            retry_timer: A BaseRetryTimer instance used to time reconnection retries.
+            retry_timer: A AbstractRetryTimer instance used to time reconnection retries.
             socket_timeout: Duration that ESME will wait, for socket/connection
                             related activities with SMSC, before timing out
             custom_codecs: A dictionary of encodings and their corresponding `codecs.CodecInfo
@@ -138,13 +138,14 @@ class ESME:
         check_param(log_metadata, 'log_metadata', dict, optional=True)
         check_param(log_handler, 'log_handler', Handler, optional=True)
         check_param(log_include_timestamp, 'log_include_timestamp', bool)
-        check_param(hook, 'hook', BaseHook, optional=True)
-        check_param(broker, 'broker', BaseBroker, optional=True)
-        check_param(rate_limiter, 'rate_limiter', BaseRateLimiter, optional=True)
-        check_param(sequence_generator, 'sequence_generator', BaseSequenceGenerator, optional=True)
-        check_param(throttle_handler, 'throttle_handler', BaseThrottleHandler, optional=True)
-        check_param(correlator, 'correlator', BaseCorrelator, optional=True)
-        check_param(retry_timer, 'retry_timer', BaseRetryTimer, optional=True)
+        check_param(hook, 'hook', AbstractHook, optional=True)
+        check_param(broker, 'broker', AbstractBroker, optional=True)
+        check_param(rate_limiter, 'rate_limiter', AbstractRateLimiter, optional=True)
+        check_param(sequence_generator, 'sequence_generator', AbstractSequenceGenerator,
+                    optional=True)
+        check_param(throttle_handler, 'throttle_handler', AbstractThrottleHandler, optional=True)
+        check_param(correlator, 'correlator', AbstractCorrelator, optional=True)
+        check_param(retry_timer, 'retry_timer', AbstractRetryTimer, optional=True)
         check_param(socket_timeout, 'socket_timeout', float)
         check_param(custom_codecs, 'custom_codecs', dict, optional=True)
         check_param(default_encoding, 'default_encoding', str)
@@ -186,17 +187,17 @@ class ESME:
         self._logger: StructuredLogger = StructuredLogger('esme' + self.client_id, log_level,
                                                           log_metadata, log_handler,
                                                           log_include_timestamp)
-        self.hook: BaseHook = hook or SimpleHook(logger=self._logger)
-        self.broker: BaseBroker = broker or SimpleBroker()
-        self.rate_limiter: Optional[BaseRateLimiter] = rate_limiter
-        self.sequence_generator: BaseSequenceGenerator = (sequence_generator or
+        self.hook: AbstractHook = hook or SimpleHook(logger=self._logger)
+        self.broker: AbstractBroker = broker or SimpleBroker()
+        self.rate_limiter: Optional[AbstractRateLimiter] = rate_limiter
+        self.sequence_generator: AbstractSequenceGenerator = (sequence_generator or
                                                           SimpleSequenceGenerator())
-        self.throttle_handler: BaseThrottleHandler = (throttle_handler or
+        self.throttle_handler: AbstractThrottleHandler = (throttle_handler or
                                                       SimpleThrottleHandler(logger=self._logger))
-        self.correlator: BaseCorrelator = correlator or SimpleCorrelator()
+        self.correlator: AbstractCorrelator = correlator or SimpleCorrelator()
         self.correlator.hook = self.hook
         self.correlator.client_id = self.client_id
-        self.retry_timer: BaseRetryTimer = retry_timer or SimpleExponentialBackoff()
+        self.retry_timer: AbstractRetryTimer = retry_timer or SimpleExponentialBackoff()
         self.socket_timeout: float = socket_timeout
         self.interface_version: int = SMPP_VERSION_3_4
         self._session_state: SmppSessionState = SmppSessionState.CLOSED

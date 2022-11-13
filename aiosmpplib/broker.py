@@ -5,14 +5,14 @@ from .utils import check_param
 from .protocol import SmppMessage
 
 
-class BaseBroker(ABC):
+class AbstractBroker(ABC):
     '''
     This is the interface that must be implemented to satisfy aiosmpplib broker.
-    User implementations should inherit this class and
-    implement the :func:`enqueue <BaseBroker.enqueue>` and :func:`dequeue <BaseBroker.dequeue>`
-    methods.
+    User implementations should inherit this class and implement the
+    :func:`enqueue <AbstractBroker.enqueue>` and
+    :func:`dequeue <AbstractBroker.dequeue>` methods.
 
-    aiosmpplib calls an implementation of this class to enqueue and/or dequeue an item.
+    aiosmpplib calls an implementation of this class to dequeue messages.
     '''
 
     @abstractmethod
@@ -47,9 +47,9 @@ class BaseBroker(ABC):
         raise NotImplementedError()
 
 
-class SimpleBroker(BaseBroker):
+class SimpleBroker(AbstractBroker):
     '''
-    This is an in-memory implementation of BaseBroker.
+    This is an in-memory implementation of AbstractBroker.
 
     WARNING: It should only be used for tests and demo purposes.
     '''

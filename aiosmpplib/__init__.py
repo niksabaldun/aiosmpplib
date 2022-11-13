@@ -1,14 +1,13 @@
-from . __version__ import about
 from .codec import GSM7BitCodec, GSM7BitPackedCodec, UCS2Codec
 from .esme import ESME
 from .log import StructuredLogger
-from .broker import BaseBroker
-from .correlator import BaseCorrelator
-from .hook import BaseHook
-from .ratelimiter import BaseRateLimiter
-from .retrytimer import BaseRetryTimer
-from .sequence import BaseSequenceGenerator
-from .throttle import BaseThrottleHandler
+from .broker import AbstractBroker
+from .correlator import AbstractCorrelator
+from .hook import AbstractHook
+from .ratelimiter import AbstractRateLimiter
+from .retrytimer import AbstractRetryTimer
+from .sequence import AbstractSequenceGenerator
+from .throttle import AbstractThrottleHandler
 from .state import (OptionalTag, OptionalParam, SmppCommand, SmppCommandStatus, SmppDataCoding,
                     SmppSessionState, BindMode, TON, NPI, PhoneNumber, SmppError)
 from .protocol import (SubmitSm, SubmitSmResp, DeliverSm, DeliverSmResp, Unbind, UnbindResp,
@@ -18,9 +17,9 @@ from .protocol import (SubmitSm, SubmitSmResp, DeliverSm, DeliverSmResp, Unbind,
 from .jsonutils import json_decode, json_encode
 
 __all__ = [
-    'about', 'SMPP_VERSION_3_4', 'GSM7BitCodec', 'GSM7BitPackedCodec', 'UCS2Codec', 'ESME',
-    'StructuredLogger', 'BaseBroker', 'BaseCorrelator', 'BaseHook', 'BaseRateLimiter',
-    'BaseRetryTimer', 'BaseSequenceGenerator', 'BaseThrottleHandler', 'OptionalTag',
+    'SMPP_VERSION_3_4', 'GSM7BitCodec', 'GSM7BitPackedCodec', 'UCS2Codec', 'StructuredLogger',
+    'ESME', 'AbstractBroker', 'AbstractCorrelator', 'AbstractHook', 'AbstractRateLimiter',
+    'AbstractRetryTimer', 'AbstractSequenceGenerator', 'AbstractThrottleHandler', 'OptionalTag',
     'OptionalParam', 'SmppCommand', 'SmppCommandStatus', 'SmppDataCoding', 'SmppSessionState',
     'BindMode', 'TON', 'NPI', 'PhoneNumber', 'SmppError', 'SubmitSm', 'SubmitSmResp', 'DeliverSm',
     'DeliverSmResp', 'Unbind', 'UnbindResp', 'BindTransceiver', 'BindTransceiverResp',

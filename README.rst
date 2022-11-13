@@ -79,7 +79,7 @@ Your application interacts with ESME via three interfaces: broker, correlator an
 
 * Broker is a FIFO queue in which your application puts messages. ESME retrieves messages
   from the broker and sends them to SMSC. Any type of SMPP message can be queued, but it really
-  only makes sense for **SubmitSm** (outgoing SMS). Subclass **BaseBroker** in order to put and
+  only makes sense for **SubmitSm** (outgoing SMS). Subclass **AbstractBroker** in order to put and
   get messages from persistent storage. The library provides ``json_encode`` and ``json_decode``
   convenience methods which can be used to convert messages to/from JSON. Again, while any message
   can be serialized, it probably only makes sense for **SubmitSm**, and possibly **DeliverSm**.
@@ -91,14 +91,14 @@ Your application interacts with ESME via three interfaces: broker, correlator an
   Delivery receipts may be received days after original message is sent, so this type of
   correlation should be persisted. Subclass **SimpleCorrelator** and override ``put_delivery`` and
   ``get_delivery`` methods. If you want to implement more efficient request/response correlation,
-  subclass **BaseCorrelator** and also override ``get`` and ``put`` methods.
+  subclass **AbstractCorrelator** and also override ``get`` and ``put`` methods.
 * Hook is an interface with three async methods:
 
   * ``sending``: Called before sending any message to SMSC.
   * ``received``: Called after receiving any message from SMSC.
   * ``send_error``: Called if error occured while sending a SubmitSm.
 
-  Subclass **BaseHook** and implement all three methods. The latter two are essential for
+  Subclass **AbstractHook** and implement all three methods. The latter two are essential for
   reliable message tracking.
 
 Incoming message flow
@@ -169,10 +169,10 @@ ____________________________
 .. code-block:: python
 
     import asyncio
-    from aiosmpplib import BaseHook, SmppCommandStatus
+    from aiosmpplib import AbstractHook, SmppCommandStatus
     from aiosmpplib import DeliverSm, SubmitSm, SubmitSmResp, GenericNack, SmppMessage, Trackable
 
-    class MyHook(BaseHook):
+    class MyHook(AbstractHook):
         async def _save_result(self, msg: str, smpp_message: Trackable) -> None:
             log_id: str = smpp_message.log_id
             extra_data: str = smpp_message.extra_data

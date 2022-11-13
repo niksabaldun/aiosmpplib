@@ -4,14 +4,14 @@ from .log import StructuredLogger, DEBUG, WARNING
 from .utils import check_param
 
 
-class BaseThrottleHandler(ABC):
+class AbstractThrottleHandler(ABC):
     '''
     This is the interface that must be implemented to satisfy aiosmpplib throttle handling.
     User implementations should inherit this class and implement:
-    :func:`throttled <BaseThrottleHandler.throttled>`,
-    :func:`not_throttled <BaseThrottleHandler.not_throttled>`,
-    :func:`allow_request <BaseThrottleHandler.allow_request>` and
-    :func:`throttle_delay <BaseThrottleHandler.throttle_delay>` methods.
+    :func:`throttled <AbstractThrottleHandler.throttled>`,
+    :func:`not_throttled <AbstractThrottleHandler.not_throttled>`,
+    :func:`allow_request <AbstractThrottleHandler.allow_request>` and
+    :func:`throttle_delay <AbstractThrottleHandler.throttle_delay>` methods.
 
     When an SMPP client exceeds it's rate limit, or when the SMSC is under load or for other reason;
     The SMSC may decide to start throtlling requests from that particular client.
@@ -49,7 +49,7 @@ class BaseThrottleHandler(ABC):
     @abstractmethod
     async def throttle_delay(self) -> float:
         '''
-        if the last :func:`allow_request <BaseThrottleHandler.allow_request>` method call
+        if the last :func:`allow_request <AbstractThrottleHandler.allow_request>` method call
         returned False(thus denying sending a request),
         aiosmpplib will call the throttle_delay method
         to determine how long in seconds to wait before calling allow_request again.
@@ -57,9 +57,9 @@ class BaseThrottleHandler(ABC):
         raise NotImplementedError()
 
 
-class SimpleThrottleHandler(BaseThrottleHandler):
+class SimpleThrottleHandler(AbstractThrottleHandler):
     '''
-    This is an implementation of BaseThrottleHandler.
+    This is an implementation of AbstractThrottleHandler.
 
     It works by:
 

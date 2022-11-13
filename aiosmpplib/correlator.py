@@ -1,7 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Tuple
-from .hook import BaseHook
+from .hook import AbstractHook
 from .protocol import SmppMessage, SubmitSm
 from .state import SmppCommand
 from .utils import check_param
@@ -10,12 +10,13 @@ from .utils import check_param
 _EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
 
-class BaseCorrelator(ABC):
+class AbstractCorrelator(ABC):
     '''
     Interface that must be implemented to satisfy aiosmpplib Correlator.
     User implementations should inherit this class and
-    implement the :func:`get <BaseCorrelator.get>`, :func:`put <BaseCorrelator.put>`,
-    :func:`get <BaseCorrelator.get_delivery>` and :func:`put <BaseCorrelator.put_delivery>` methods.
+    implement the :func:`get <AbstractCorrelator.get>`, :func:`put <AbstractCorrelator.put>`,
+    :func:`get <AbstractCorrelator.get_delivery>` and
+    :func:`put <AbstractCorrelator.put_delivery>` methods.
 
     A Correlator is class that is used to store relations between SMPP requests and replies.
     Correlation is based on sequence number, and optionally message type,
@@ -33,7 +34,7 @@ class BaseCorrelator(ABC):
     '''
 
     # Parent MUST set these properties before use
-    hook: BaseHook = None  # type: ignore
+    hook: AbstractHook = None  # type: ignore
     client_id: str = None  # type: ignore
 
     async def expired(self, smpp_message: SmppMessage) -> None:
@@ -99,9 +100,9 @@ class BaseCorrelator(ABC):
         raise NotImplementedError()
 
 
-class SimpleCorrelator(BaseCorrelator):
+class SimpleCorrelator(AbstractCorrelator):
     '''
-    A simple implementation of BaseCorrelator.
+    A simple implementation of AbstractCorrelator.
     It manages the correlation between SMPP requests and responses, and also between
     SubmitSM requests and DeliverSm receipts.
     WARNING: Not suitable for production!

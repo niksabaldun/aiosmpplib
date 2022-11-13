@@ -5,12 +5,12 @@ from itertools import repeat
 from .utils import check_param
 
 
-class BaseRetryTimer(ABC):
+class AbstractRetryTimer(ABC):
     '''
     This is the interface that must be implemented to satisfy aiosmpplib retry timing.
     User implementations should inherit this class and implement the
-    :func:`wait <BaseRetryTimer.wait>`, :func:`reset <BaseRetryTimer.reset>`
-    and :func:`reset <BaseRetryTimer.next_delay>` methods.
+    :func:`wait <AbstractRetryTimer.wait>`, :func:`reset <AbstractRetryTimer.reset>`
+    and :func:`reset <AbstractRetryTimer.next_delay>` methods.
 
     This class is used for timing consecutive retries in case of failure.
     '''
@@ -38,9 +38,9 @@ class BaseRetryTimer(ABC):
         raise NotImplementedError()
 
 
-class SimpleExponentialBackoff(BaseRetryTimer):
+class SimpleExponentialBackoff(AbstractRetryTimer):
     '''
-    This is an implementation of BaseRetryTimer using simple truncated exponential backoff.
+    This is an implementation of AbstractRetryTimer using simple truncated exponential backoff.
     Retry delay starts at the minimum and is doubled up to the maximum.
     '''
 
