@@ -1,8 +1,6 @@
 import os
 import ast
-import codecs
 from setuptools import setup, find_packages
-
 
 here = os.path.abspath(os.path.dirname(__file__))
 about = {}
@@ -11,9 +9,16 @@ with open(os.path.join(here, 'aiosmpplib', '__version__.py'), 'r', encoding='utf
     y = x.replace('about = ', '')
     about = ast.literal_eval(y)
 
-
-with codecs.open('README.rst') as readme_file:
+with open('README.rst', 'r', encoding='utf-8') as readme_file:
     long_description = readme_file.read()
+
+tests_require = [
+    'tox',
+    'pytest',
+    'pytest-asyncio',
+    'coverage',
+    #'coveralls',
+]
 
 
 setup(
@@ -77,29 +82,31 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[],
+    tests_require=tests_require,
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
     # for example:
     # $ pip install -e .[dev,test,benchmarks]
-    #extras_require={
-    #    'dev': [
-    #        'coverage',
-    #        'pypandoc',
-    #        'twine',
-    #        'wheel',
-    #        'Sphinx==2.2.0',
-    #        'sphinx-autodoc-typehints==1.7.0',
-    #        'sphinx-rtd-theme==0.4.3',  # aiosmpplib sphinx docs theme
-    #    ],
-    #    'test': ['flake8', 'pylint', 'black==19.10b0', 'bandit', 'mypy', 'pytype'],
-    #    'benchmarks': [
-    #        #'asyncpg==0.18.3',
-    #        #'docker==4.2.0',
-    #        #'prometheus_client==0.6.0',
-    #        #'aioredis==1.2.0',
-    #        #'pythonfuzz==1.0.3',
-    #    ],
-    #},
+    extras_require={
+        #'dev': [
+        #    'coverage',
+        #    'pypandoc',
+        #    'twine',
+        #    'wheel',
+        #    'Sphinx==2.2.0',
+        #    'sphinx-autodoc-typehints==1.7.0',
+        #    'sphinx-rtd-theme==0.4.3',  # aiosmpplib sphinx docs theme
+        #],
+        #'test': ['flake8', 'pylint', 'black==19.10b0', 'bandit', 'mypy', 'pytype'],
+        'test': tests_require,
+        #'benchmarks': [
+        #    #'asyncpg==0.18.3',
+        #    #'docker==4.2.0',
+        #    #'prometheus_client==0.6.0',
+        #    #'aioredis==1.2.0',
+        #    #'pythonfuzz==1.0.3',
+        #],
+    },
     # If there are data files included in your packages that need to be
     # installed, specify them here.  If using Python 2.6 or less, then these
     # have to be included in MANIFEST.in as well.
