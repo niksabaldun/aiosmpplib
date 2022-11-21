@@ -57,17 +57,20 @@ class SimpleExponentialBackoff(AbstractRetryTimer):
         if max_increases < 0:
             raise ValueError('Parameter `max_increases` must not be negative.')
 
-        self.min_delay: int = min_delay
-        self.max_delay: int = reduce(int.__mul__, repeat(2, max_increases), min_delay)
-        self._next_delay = min_delay
+        self._min_delay: int = min_delay
+        self._max_delay: int = reduce(int.__mul__, repeat(2, max_increases), min_delay)
+        self._next_delay: int = 0
 
     async def wait(self) -> None:
+        if self._next_delay == 0:
+            self._next_delay = self._min_delay
+            return
         await asyncio.sleep(self._next_delay / 1000)
-        if self._next_delay < self.max_delay:
+        if self._next_delay < self._max_delay:
             self._next_delay *= 2
 
     def reset(self) -> None:
-        self._next_delay = self.min_delay
+        self._next_delay = 0
 
     def next_delay(self) -> float:
         return self._next_delay / 1000
