@@ -125,12 +125,12 @@ class ESME:
         '''
         check_param(smsc_host, 'smsc_host', str)
         check_param(smsc_port, 'smsc_port', int)
-        check_param(system_id, 'system_id', str)
-        check_param(password, 'password', str)
-        check_param(system_type, 'system_type', str)
+        check_param(system_id, 'system_id', str, maxlen=15)
+        check_param(password, 'password', str, maxlen=8)
+        check_param(system_type, 'system_type', str, maxlen=12)
         check_param(addr_ton, 'addr_ton', TON)
         check_param(addr_npi, 'addr_npi', NPI)
-        check_param(address_range, 'address_range', str)
+        check_param(address_range, 'address_range', str, maxlen=40)
         check_param(bind_mode, 'bind_mode', BindMode)
         check_param(client_id, 'client_id', str, optional=True)
         check_param(enquire_link_interval, 'enquire_link_interval', float)
@@ -208,10 +208,6 @@ class ESME:
         self._data_received: asyncio.Event = asyncio.Event()
         self._bound: asyncio.Event = asyncio.Event()
         self._shut_down: asyncio.Event = asyncio.Event()
-
-        # For exceptions, we try and avoid catch-all blocks.
-        # Instead we catch only the exceptions we expect.
-        # Exception hierarchy: https://docs.python.org/3/library/exceptions.html#exception-hierarchy
 
     async def _end_task(self, task: Task) -> None:
         '''

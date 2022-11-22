@@ -180,7 +180,7 @@ class SubmitSm(Trackable, SmppMessage):
         check_param(self.short_message, 'short_message', str)
         check_param(self.source, 'source', PhoneNumber)
         check_param(self.destination, 'destination', PhoneNumber)
-        check_param(self.service_type, 'service_type', str)
+        check_param(self.service_type, 'service_type', str, maxlen=5)
         check_param(self.esm_class, 'esm_class', int)
         check_param(self.protocol_id, 'protocol_id', int)
         check_param(self.priority_flag, 'priority_flag', int)
@@ -210,8 +210,6 @@ class SubmitSm(Trackable, SmppMessage):
             raise ValueError('Either short_message or message_payload must be specified')
         if self.short_message and self.message_payload:
             raise ValueError('Specifying both short_message and message_payload is not allowed')
-        if not self.destination.number:
-            raise ValueError('Destination number must be specified')
         super().__post_init__()
         # default_encoding and custom_codecs need to be set by ESME/SMSC before sending
         self._default_encoding: str = DEFAULT_ENCODING
@@ -481,7 +479,7 @@ class SubmitSmResp(Trackable, SmppMessage):
     message_id: str = ''
 
     def __post_init__(self) -> None:
-        check_param(self.message_id, 'message_id', str)
+        check_param(self.message_id, 'message_id', str, maxlen=64)
         super().__post_init__()
 
     @property
@@ -640,6 +638,15 @@ class BindTransceiver(SmppMessage):
     addr_npi: NPI = NPI.UNKNOWN
     address_range: str = ''
 
+    def __post_init__(self) -> None:
+        check_param(self.system_id, 'system_id', str, maxlen=15)
+        check_param(self.password, 'password', str, maxlen=8)
+        check_param(self.system_type, 'system_type', str, maxlen=12)
+        check_param(self.interface_version, 'interface_version', int)
+        check_param(self.addr_ton, 'addr_ton', TON)
+        check_param(self.addr_npi, 'addr_npi', NPI)
+        check_param(self.address_range, 'address_range', str, maxlen=40)
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.BIND_TRANSCEIVER
@@ -703,6 +710,10 @@ class BindTransceiverResp(SmppMessage):
     '''
     system_id: str = ''
     sc_interface_version: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        check_param(self.system_id, 'system_id', str, maxlen=15)
+        check_param(self.sc_interface_version, 'sc_interface_version', int, optional=True)
 
     @property
     def smpp_command(self) -> SmppCommand:

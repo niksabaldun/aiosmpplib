@@ -653,7 +653,7 @@ class PhoneNumber():
     npi: NPI = NPI.UNKNOWN
 
     def __post_init__(self):
-        check_param(self.number, 'number', str)
+        check_param(self.number, 'number', str, maxlen=20)
         check_param(self.ton, 'ton', TON)
         check_param(self.npi, 'npi', NPI)
 

@@ -3,7 +3,7 @@ from typing import Any, Optional, Tuple, Type, Union
 
 
 def check_param(param: Any, param_name: str, param_type: Union[Type, Tuple[Type]],
-                optional: bool=False) -> None:
+                optional: bool=False, maxlen: int = 0) -> None:
     if param is None:
         if not optional:
             raise ValueError(f'Non-optional parameter `{param_name}` was set to None.')
@@ -15,6 +15,9 @@ def check_param(param: Any, param_name: str, param_type: Union[Type, Tuple[Type]
             type_names: str = ' or '.join(f'`{typ.__name__}`' for typ in param_type)
         raise ValueError(f'Parameter `{param_name}` must be of type {type_names} '
                          f'and `{type(param).__name__}` type was provided.')
+    if maxlen > 0 and isinstance(param, str) and len(param) > maxlen:
+        raise ValueError(f'Parameter `{param_name}` maximum length  is {maxlen} '
+                         f'and the length of provided value is `{len(param)}`.')
 
 
 class FixedOffset(tzinfo):
