@@ -15,8 +15,8 @@ from .utils import check_param
 
 TRACE: int = logging.DEBUG - 5
 # Add TRACE level to logging module
-#logging.addLevelName(TRACE, 'TRACE')
-#setattr(logging, 'TRACE', TRACE)
+logging.addLevelName(TRACE, 'TRACE')
+setattr(logging, 'TRACE', TRACE)
 #setattr(logging, 'trace', trace_to_root)
 
 
@@ -35,7 +35,7 @@ class StructuredLogger(Logger):
 
     def __init__(self, logger_name: str, level: Union[str, int]=INFO,
                  log_metadata: Optional[Dict[str, Any]]=None, handler: Optional[Handler]=None,
-                 include_timestamp: bool=True) -> None:
+                 include_timestamp: bool=True, include_level: bool=True) -> None:
         '''
         Parameters:
             logger_name: Name of the logger. It should be unique per logger.
@@ -45,17 +45,20 @@ class StructuredLogger(Logger):
                     `handler <https://docs.python.org/3/library/logging.html#logging.Handler>`_
                     to be attached to this logger. By default, `logging.StreamHandler` is used.
             include_timestamp: Whether to prefix log entries with datetime in ISO8601 format.
+            include_level: Whether to prefix log entries with log level name.
         '''
         check_param(logger_name, 'logger_name', str)
         check_param(level, 'level', (int, str))
         check_param(log_metadata, 'log_metadata', dict, optional=True)
         check_param(handler, 'handler', Handler, optional=True)
         check_param(include_timestamp, 'include_timestamp', bool)
+        check_param(include_level, 'include_level', bool)
 
         super().__init__(name=logger_name, level=self._check_level(level))
         self.log_metadata: dict = log_metadata or {}
         self.handler: Handler = handler or StreamHandler()
         self.include_timestamp: bool = include_timestamp
+        self.include_level: bool = include_level
 
         self.handler.setFormatter(Formatter('%(message)s'))
         self.handler.setLevel(self.level)
@@ -99,22 +102,24 @@ class StructuredLogger(Logger):
                            if key not in ('exc_info', 'extra', 'stack_info', 'stacklevel')}
         logger_args: Dict = {key: value for key, value in kwargs.items()
                              if key in ('exc_info', 'extra', 'stack_info', 'stacklevel')}
+        if self.include_timestamp:
+            user_args['timestamp'] = datetime.datetime.now().isoformat()
+        if self.include_level:
+            user_args['log_level'] = getLevelName(level)
         new_msg: str = self._process_msg(msg, **user_args)
         return super()._log(level, new_msg, *args, **logger_args)
 
     @staticmethod
     def _check_level(level: Union[str, int]) -> int:
         if isinstance(level, str):
-            level = getLevelName(level)
+            level = getLevelName(level.upper())
             if not isinstance(level, int):
                 # Strangely, getLevelName returns string f'Level {level}' if level is unknown
-                raise ValueError(f'Unknown logging `{level}`.')
+                raise ValueError(f'Unknown logging {level}.')
         return level
 
     def _process_msg(self, msg: Any, **user_args) -> str:
-        if self.include_timestamp:
-            msg = datetime.datetime.now().isoformat() + ' ' + str(msg)
-        merged_args: Dict = {**user_args, **self.log_metadata}
+        merged_args: Dict[str, Any] = {**user_args, **self.log_metadata}
         if merged_args:
             return f'{msg} >>> {self._to_json(merged_args)}'
         return msg
