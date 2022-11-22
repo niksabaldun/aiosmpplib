@@ -220,7 +220,7 @@ class ESME:
         except asyncio.TimeoutError:
             await self._cancel_task(task, task_name)
             return
-        except (ConnectionResetError, TimeoutError, IncompleteReadError, OSError, ValueError):
+        except (ConnectionError, TimeoutError, IncompleteReadError, OSError, ValueError):
             # We are ending a task so we don't care about errors
             pass
         self._logger.debug('Ended task', task=task_name)
@@ -700,7 +700,7 @@ class ESME:
                 error_message = (f'Error response received from SMSC: '
                                  f'{err.smpp_command.name}: {err.command_status.name}')
                 conn_error = err
-            except ConnectionResetError as err:
+            except ConnectionError as err:
                 error_message = 'Connection lost while connecting to SMSC'
                 conn_error = err
             except (TimeoutError, asyncio.TimeoutError) as err:
