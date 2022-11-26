@@ -1,12 +1,11 @@
-from collections import deque
-import logging
-import json
 import datetime
 import time
+import logging
 from logging import (CRITICAL, DEBUG, ERROR, INFO, WARNING, Formatter, Handler, LogRecord, Logger,
-                     StreamHandler, handlers, getLevelName, makeLogRecord)
+                     StreamHandler, handlers)
 from typing import Any, Deque, Dict, Optional, Union
-from .jsonutils import SmppJsonEncoder
+from collections import deque
+from .jsonutils import json_encode
 from .utils import check_param
 
 
@@ -105,14 +104,14 @@ class StructuredLogger(Logger):
         if self.include_timestamp:
             user_args['timestamp'] = datetime.datetime.now().isoformat()
         if self.include_level:
-            user_args['log_level'] = getLevelName(level)
+            user_args['log_level'] = logging.getLevelName(level)
         new_msg: str = self._process_msg(msg, **user_args)
         return super()._log(level, new_msg, *args, **logger_args)
 
     @staticmethod
     def _check_level(level: Union[str, int]) -> int:
         if isinstance(level, str):
-            level = getLevelName(level.upper())
+            level = logging.getLevelName(level.upper())
             if not isinstance(level, int):
                 # Strangely, getLevelName returns string f'Level {level}' if level is unknown
                 raise ValueError(f'Unknown logging {level}.')
@@ -130,7 +129,7 @@ class StructuredLogger(Logger):
         If it fails, it returns the error in string (not JSON) format.
         '''
         try:
-            return json.dumps(input_msg, cls=SmppJsonEncoder)
+            return json_encode(input_msg)
         except Exception as err: # pylint: disable=broad-except
             return f'aiosmpplib.StructuredLogger error: {repr(err)}'
 
@@ -260,7 +259,7 @@ class BreachHandler(handlers.MemoryHandler):
         if _diff >= self.heartbeatInterval:
             self._s_time = _now
             # see: https://docs.python.org/3/library/logging.html#logging.LogRecord
-            record = makeLogRecord({
+            record = logging.makeLogRecord({
                 'level': INFO,
                 'name': 'BreachHandler',
                 'pathname': '.../aiosmpplib/aiosmpplib/log.py',

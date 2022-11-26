@@ -517,7 +517,7 @@ class OptionalParam():
         check_param(self.value, 'value', self.tag.data_type)
         if self.tag == OptionalTag.MESSAGE_PAYLOAD:
             # Special case Octet String, with same encoding as short_message
-            # It can't be built here, because encoding from both ESME and SubmitSm is needed
+            # It can't be built here, because encoding info from both ESME and SubmitSm is needed
             raise ValueError('Creation OptionalParam with MESSAGE_PAYLOAD tag is not allowed. '
                              'It is handled automatically if needed.')
 

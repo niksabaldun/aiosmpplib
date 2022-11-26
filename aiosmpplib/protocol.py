@@ -92,13 +92,6 @@ class SmppMessage(Base):
             sequence_num=sequence_num
         )
 
-    def as_dict(self) -> Dict[str, Any]:
-        '''
-        Returns message representation as dictionary. Override if necessary.
-        '''
-        return {param: value for param, value in self.__dict__.items()
-                if not param.startswith('_')}
-
     def pdu(self) -> bytes:
         '''
         Returns message representation as SMPP PDU (encoded to binary data)
@@ -108,7 +101,7 @@ class SmppMessage(Base):
 
     @classmethod
     def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> 'SmppMessage':
+                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
         '''
         Creates SmppMessage object from data parsed from byte sequence.
         PDU header needs to be pre-parsed because it contains PDU length and command type.
@@ -122,6 +115,17 @@ class SmppMessage(Base):
         # pylint: disable=unused-argument
         # Many messages have empty body, so this is a default
         return cls(header.sequence_num, header.command_status)
+
+    @classmethod
+    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+        '''
+        Creates SmppMessage object from JSON object.
+
+        Parameters:
+            json_object: JSON-compatible dictionary
+        '''
+        # Many messages have empty body, so this is a default
+        return cls(json_object['sequence_num'], SmppCommandStatus(json_object['command_status']))
 
 
 @dataclass
@@ -467,6 +471,59 @@ class SubmitSm(Trackable, SmppMessage):
             optional_params=optional_params,
         )
 
+    @classmethod
+    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+        source_dict: Dict[str, Any] = json_object['source']
+        source: PhoneNumber = PhoneNumber(
+            source_dict['number'], TON(source_dict['ton']), NPI(source_dict['npi'])
+        )
+        destination_dict: Dict[str, Any] = json_object['destination']
+        destination: PhoneNumber = PhoneNumber(
+            destination_dict['number'], TON(destination_dict['ton']), NPI(destination_dict['npi'])
+        )
+        schedule_delivery_time: Optional[Union[datetime, timedelta]]
+        if isinstance(json_object['schedule_delivery_time'], str):
+            schedule_delivery_time = datetime.fromisoformat(json_object['schedule_delivery_time'])
+        elif isinstance(json_object['schedule_delivery_time'], float):
+            schedule_delivery_time = timedelta(seconds=json_object['schedule_delivery_time'])
+        else:
+            schedule_delivery_time = None
+        validity_period: Optional[Union[datetime, timedelta]]
+        if isinstance(json_object['validity_period'], str):
+            validity_period = datetime.fromisoformat(json_object['validity_period'])
+        elif isinstance(json_object['validity_period'], float):
+            validity_period = timedelta(seconds=json_object['validity_period'])
+        else:
+            validity_period = None
+        if not json_object['optional_params']:
+            optional_params: List[OptionalParam] = []
+        else:
+            optional_params: List[OptionalParam] = [
+                OptionalParam(OptionalTag(param_dict['tag']), param_dict['value'])
+                for param_dict in json_object['optional_params']
+            ]
+
+        return cls(
+            sequence_num=json_object['sequence_num'],
+            short_message=json_object['short_message'],
+            source=source,
+            destination=destination,
+            service_type=json_object['service_type'],
+            esm_class=json_object['esm_class'],
+            protocol_id=json_object['protocol_id'],
+            priority_flag=json_object['priority_flag'],
+            schedule_delivery_time=schedule_delivery_time,
+            validity_period=validity_period,
+            registered_delivery=json_object['registered_delivery'],
+            replace_if_present_flag=json_object['replace_if_present_flag'],
+            encoding=json_object['encoding'],
+            sm_default_msg_id=json_object['sm_default_msg_id'],
+            message_payload=json_object['message_payload'],
+            optional_params=optional_params,
+            auto_message_payload=json_object['auto_message_payload'],
+            error_handling=json_object['error_handling'],
+        )
+
 
 @dataclass
 class SubmitSmResp(Trackable, SmppMessage):
@@ -498,8 +555,16 @@ class SubmitSmResp(Trackable, SmppMessage):
         message_id: str = pdu[PDU_HEADER_LENGTH:header.pdu_length-1].decode('ascii')
         return cls(
             sequence_num=header.sequence_num,
-            message_id=message_id,
             command_status=header.command_status,
+            message_id=message_id,
+        )
+
+    @classmethod
+    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+        return cls(
+            sequence_num=json_object['sequence_num'],
+            command_status=SmppCommandStatus(json_object['command_status']),
+            message_id=json_object['message_id'],
         )
 
 
@@ -698,6 +763,19 @@ class BindTransceiver(SmppMessage):
             address_range=address_range,
         )
 
+    @classmethod
+    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+        return cls(
+            sequence_num=json_object['sequence_num'],
+            system_id=json_object['system_id'],
+            password=json_object['password'],
+            system_type=json_object['system_type'],
+            interface_version=json_object['interface_version'],
+            addr_ton=TON(json_object['addr_ton']),
+            addr_npi=NPI(json_object['addr_npi']),
+            address_range=json_object['address_range'],
+        )
+
 
 @dataclass
 class BindTransceiverResp(SmppMessage):
@@ -743,6 +821,15 @@ class BindTransceiverResp(SmppMessage):
             command_status=header.command_status,
             system_id=system_id,
             sc_interface_version=sc_interface_version,
+        )
+
+    @classmethod
+    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+        return cls(
+            sequence_num=json_object['sequence_num'],
+            command_status=SmppCommandStatus(json_object['command_status']),
+            system_id=json_object['system_id'],
+            sc_interface_version=json_object['sc_interface_version'],
         )
 
 

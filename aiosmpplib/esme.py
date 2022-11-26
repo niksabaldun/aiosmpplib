@@ -410,7 +410,7 @@ class ESME:
 
                     if self.testing:
                         # Offer escape hatch for tests to come out of endless loop
-                        return smpp_message.as_dict()
+                        return smpp_message.__dict__
                 else:
                     # Throttle_handler didn't allow us to send request.
                     delay: float = await self.throttle_handler.throttle_delay()
@@ -497,8 +497,8 @@ class ESME:
               and original_message.smpp_command != original_command):
             # This should DEFINITELY not happen
             if self._logger.isEnabledFor(ERROR):
-                self._logger.error('SMPP response corelated to unrelated request',
-                                   header=header, request=original_message.as_dict())
+                self._logger.error('SMPP response correlated to unrelated request',
+                                   header=header, request=original_message.__dict__)
             return None
 
         message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]

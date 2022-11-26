@@ -25,7 +25,10 @@ Installation
 
 Requirements
 ------------
-Python 3.7+ is required. Currently, there aren't any third-party dependencies.
+Python 3.7+ is required. Currently, aiosmpplib does not have any third-party dependencies,
+but it optionally uses `orjson`_ library for JSON serialization and logging.
+
+.. _orjson: https://github.com/ijl/orjson
 
 
 Quick start
