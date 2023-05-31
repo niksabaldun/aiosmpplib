@@ -6,7 +6,6 @@ from .protocol import SmppMessage, SubmitSm
 from .state import SmppCommand
 from .utils import check_param
 
-
 _EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
 
@@ -127,7 +126,7 @@ class SimpleCorrelator(AbstractCorrelator):
        }
     '''
 
-    def __init__(self, max_ttl: float=15.00) -> None:
+    def __init__(self, max_ttl: float = 15.00) -> None:
         '''
         Parameters:
             max_ttl: The time in seconds that an item is going to be stored.
@@ -179,5 +178,7 @@ class SimpleCorrelator(AbstractCorrelator):
                 await self.expired(message)
 
         if any(now - value[0] > self.max_ttl for value in self._delivery_store.values()):
-            self._delivery_store = {key: value for key, value in self._delivery_store.items()
-                                    if now - value[0] > self.max_ttl}
+            self._delivery_store = {
+                key: value
+                for key, value in self._delivery_store.items() if now - value[0] > self.max_ttl
+            }

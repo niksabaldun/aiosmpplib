@@ -1,22 +1,21 @@
 import datetime
 import time
 import logging
-from logging import (CRITICAL, DEBUG, ERROR, INFO, WARNING, Formatter, Handler, LogRecord, Logger,
-                     StreamHandler, handlers)
+from logging import (CRITICAL, DEBUG, ERROR, INFO, WARNING, Formatter, Handler, LogRecord, Logger, StreamHandler,
+                     handlers)
 from typing import Any, Deque, Dict, Optional, Union
 from collections import deque
 from .jsonutils import json_encode
 from .utils import check_param
 
-
-#def trace_to_root(message, *args, **kwargs):
-#    logging.log(TRACE, message, *args, **kwargs)
+# def trace_to_root(message, *args, **kwargs):
+#     logging.log(TRACE, message, *args, **kwargs)
 
 TRACE: int = logging.DEBUG - 5
 # Add TRACE level to logging module
 logging.addLevelName(TRACE, 'TRACE')
 setattr(logging, 'TRACE', TRACE)
-#setattr(logging, 'trace', trace_to_root)
+# setattr(logging, 'trace', trace_to_root)
 
 
 class StructuredLogger(Logger):
@@ -32,9 +31,13 @@ class StructuredLogger(Logger):
         logger.log(logging.INFO, event='web_request', url='https://www.google.com/')
     '''
 
-    def __init__(self, logger_name: str, level: Union[str, int]=INFO,
-                 log_metadata: Optional[Dict[str, Any]]=None, handler: Optional[Handler]=None,
-                 include_timestamp: bool=True, include_level: bool=True) -> None:
+    def __init__(self,
+                 logger_name: str,
+                 level: Union[str, int] = INFO,
+                 log_metadata: Optional[Dict[str, Any]] = None,
+                 handler: Optional[Handler] = None,
+                 include_timestamp: bool = True,
+                 include_level: bool = True) -> None:
         '''
         Parameters:
             logger_name: Name of the logger. It should be unique per logger.
@@ -84,7 +87,7 @@ class StructuredLogger(Logger):
         if self.isEnabledFor(ERROR):
             self._log(ERROR, msg, args, **kwargs)
 
-    def exception(self, msg: Any, *args, exc_info: bool=True, **kwargs):
+    def exception(self, msg: Any, *args, exc_info: bool = True, **kwargs):
         self.error(msg, *args, exc_info=exc_info, **kwargs)
 
     def critical(self, msg: Any, *args, **kwargs):
@@ -97,10 +100,14 @@ class StructuredLogger(Logger):
             self._log(level, msg, args, **kwargs)
 
     def _log(self, level: int, msg: Any, *args, **kwargs):
-        user_args: Dict = {key: value for key, value in kwargs.items()
-                           if key not in ('exc_info', 'extra', 'stack_info', 'stacklevel')}
-        logger_args: Dict = {key: value for key, value in kwargs.items()
-                             if key in ('exc_info', 'extra', 'stack_info', 'stacklevel')}
+        user_args: Dict = {
+            key: value
+            for key, value in kwargs.items() if key not in ('exc_info', 'extra', 'stack_info', 'stacklevel')
+        }
+        logger_args: Dict = {
+            key: value
+            for key, value in kwargs.items() if key in ('exc_info', 'extra', 'stack_info', 'stacklevel')
+        }
         if self.include_timestamp:
             user_args['timestamp'] = datetime.datetime.now().isoformat()
         if self.include_level:
@@ -130,7 +137,7 @@ class StructuredLogger(Logger):
         '''
         try:
             return json_encode(input_msg)
-        except Exception as err: # pylint: disable=broad-except
+        except Exception as err:  # pylint: disable=broad-except
             return f'aiosmpplib.StructuredLogger error: {repr(err)}'
 
 
@@ -177,9 +184,13 @@ class BreachHandler(handlers.MemoryHandler):
         logger.error('damn')
     '''
 
-    def __init__(self, flushLevel: int=WARNING, capacity: int=1000, target: Optional[Handler]=None,
-                 flushOnClose: bool=False, heartbeatInterval: Optional[float]=None,
-                 targetLevel: str='DEBUG') -> None:
+    def __init__(self,
+                 flushLevel: int = WARNING,
+                 capacity: int = 1000,
+                 target: Optional[Handler] = None,
+                 flushOnClose: bool = False,
+                 heartbeatInterval: Optional[float] = None,
+                 targetLevel: str = 'DEBUG') -> None:
         '''
         Parameters:
             flushLevel: the log level that will trigger this handler to
@@ -223,7 +234,7 @@ class BreachHandler(handlers.MemoryHandler):
             self._s_time = time.monotonic()
 
         self.targetLevel: int = StructuredLogger._check_level(targetLevel)
-        assert self.target is not None # For type checkers
+        assert self.target is not None  # For type checkers
         self.target.setLevel(self.targetLevel)
 
     def shouldFlush(self, record: LogRecord) -> bool:
