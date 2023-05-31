@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from codecs import CodecInfo
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from math import floor
 from struct import pack, unpack_from
@@ -163,8 +163,8 @@ class SubmitSm(Trackable, SmppMessage):
                         method
     '''
     short_message: str = ''
-    source: PhoneNumber = PhoneNumber('')
-    destination: PhoneNumber = PhoneNumber('')
+    source: PhoneNumber = field(default_factory=lambda: PhoneNumber(''))
+    destination: PhoneNumber = field(default_factory=lambda: PhoneNumber(''))
     service_type: str = ''
     esm_class: int = 0x00000000
     protocol_id: int = 0x00000000
