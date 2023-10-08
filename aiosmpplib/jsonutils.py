@@ -6,13 +6,12 @@ from .state import SmppCommand
 try:
     import orjson
     from orjson import loads as json_loads
-
     def json_encode(obj: Any) -> str:
-        return orjson.dumps(obj, default=_json_default, option=orjson.OPT_PASSTHROUGH_DATACLASS).decode('utf-8')
+        return orjson.dumps(obj, default=_json_default,
+                            option=orjson.OPT_PASSTHROUGH_DATACLASS).decode('utf-8')
 except ImportError:
     import json
     from json import loads as json_loads
-
     def json_encode(obj: Any) -> str:
         return json.dumps(obj, default=_json_default)
 
@@ -40,5 +39,5 @@ def json_decode(json_data: Union[str, bytes]) -> SmppMessage:
     if not smpp_command_str:
         raise ValueError('Invalid JSON object: not a SMPP message')
     smpp_command: SmppCommand = SmppCommand[smpp_command_str]
-    message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[smpp_command]
+    message_class: Type[SmppMessage]= MESSAGE_TYPE_MAP[smpp_command]
     return message_class.from_json(json_object)

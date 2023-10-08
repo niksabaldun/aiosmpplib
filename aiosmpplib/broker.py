@@ -54,7 +54,7 @@ class SimpleBroker(AbstractBroker):
     WARNING: It should only be used for tests and demo purposes.
     '''
 
-    def __init__(self, maxsize: int = 2500) -> None:
+    def __init__(self, maxsize: int=2500) -> None:
         '''
         Parameters:
             maxsize: the maximum number of items that can be put in the queue.

@@ -2,11 +2,8 @@ from datetime import datetime, timedelta, tzinfo
 from typing import Any, Optional, Tuple, Type, Union
 
 
-def check_param(param: Any,
-                param_name: str,
-                param_type: Union[Type, Tuple[Type]],
-                optional: bool = False,
-                maxlen: int = 0) -> None:
+def check_param(param: Any, param_name: str, param_type: Union[Type, Tuple[Type]],
+                optional: bool=False, maxlen: int = 0) -> None:
     if param is None:
         if not optional:
             raise ValueError(f'Non-optional parameter `{param_name}` was set to None.')
@@ -46,7 +43,7 @@ class FixedOffset(tzinfo):
         return timedelta(0)
 
     @classmethod
-    def from_timezone(cls, offset_str: str, name: str = '') -> 'FixedOffset':
+    def from_timezone(cls, offset_str: str, name: str='') -> 'FixedOffset':
         '''
         Parameters:
             offset_str: Timezone part of datetime in ISO8601 format, e.g. '+0100' or '-0300'

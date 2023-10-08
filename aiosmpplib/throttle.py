@@ -72,11 +72,8 @@ class SimpleThrottleHandler(AbstractThrottleHandler):
 
     '''
 
-    def __init__(self,
-                 logger: StructuredLogger,
-                 sampling_period: float = 180.00,
-                 sample_size: float = 50.00,
-                 deny_request_at: float = 1.00,
+    def __init__(self, logger: StructuredLogger, sampling_period: float = 180.00,
+                 sample_size: float = 50.00, deny_request_at: float = 1.00,
                  throttle_wait: float = 3.00) -> None:
         '''
         Parameters:
@@ -133,9 +130,7 @@ class SimpleThrottleHandler(AbstractThrottleHandler):
         allowed: bool = current_percent_throttles <= self.deny_request_at
         log_level: int = DEBUG if allowed else WARNING
         if self.logger.isEnabledFor(log_level):
-            self.logger.log(
-                log_level,
-                'Throttle handler result:',
+            self.logger.log(log_level, 'Throttle handler result:',
                 result='allowed' if allowed else 'denied',
                 percent_throttles=current_percent_throttles,
                 throttle_responses=_throttle_responses,

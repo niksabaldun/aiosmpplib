@@ -36,7 +36,6 @@ class SmppCommand(IntEnum):
     DATA_SM = 0x00000103
     DATA_SM_RESP = 0x80000103
 
-
 COMMAND_RESPONSE_MAP: Dict[SmppCommand, SmppCommand] = {
     SmppCommand.BIND_RECEIVER: SmppCommand.BIND_RECEIVER_RESP,
     SmppCommand.BIND_TRANSMITTER: SmppCommand.BIND_TRANSMITTER_RESP,
@@ -51,8 +50,8 @@ COMMAND_RESPONSE_MAP: Dict[SmppCommand, SmppCommand] = {
     SmppCommand.SUBMIT_MULTI: SmppCommand.SUBMIT_MULTI_RESP,
     SmppCommand.DATA_SM: SmppCommand.DATA_SM_RESP,
 }
-RESPONSE_COMMAND_MAP: Dict[SmppCommand, SmppCommand] = {resp: comm for comm, resp in COMMAND_RESPONSE_MAP.items()}
-
+RESPONSE_COMMAND_MAP: Dict[SmppCommand, SmppCommand] = {resp: comm for comm, resp
+                                                        in COMMAND_RESPONSE_MAP.items()}
 
 class SmppCommandStatus(IntEnum):
     '''
@@ -206,7 +205,7 @@ class SmppCommandStatus(IntEnum):
             return 'Invalid Optional Parameter Value'
         if self.value == 0x000000FE:
             return 'Delivery Failure (used for data_sm_resp)'
-        return 'Unknown Error'  # self.value == 0x000000FF
+        return 'Unknown Error' # self.value == 0x000000FF
 
 
 class SmppSessionState(IntEnum):
@@ -320,7 +319,7 @@ class SmppDataCoding(IntEnum):
             return 'Pictogram Encoding'
         if self.value == 0b00001010:
             return 'ISO - 2022 - JP(Music Codes)'
-        return 'KS C 5601'  # self.value == 0b00001110
+        return 'KS C 5601' # self.value == 0b00001110
 
 
 class OptionalTag(IntEnum):
@@ -464,11 +463,13 @@ class OptionalTag(IntEnum):
 
     @property
     def data_type(self) -> Type:
-        if self.value in (0x001D, 0x001E, 0x0202, 0x0203, 0x0303, 0x0381, 0x0423, 0x0424, 0x0501, 0x1383):
+        if self.value in (0x001D, 0x001E, 0x0202, 0x0203, 0x0303,
+                          0x0381, 0x0423, 0x0424, 0x0501, 0x1383):
             return str
-        if self.value in (0x0005, 0x0006, 0x0007, 0x0008, 0x000D, 0x000E, 0x000F, 0x0010, 0x0017, 0x0019, 0x0030,
-                          0x0201, 0x0204, 0x0205, 0x020A, 0x020B, 0x020C, 0x020D, 0x020E, 0x020F, 0x0210, 0x0302,
-                          0x0304, 0x0420, 0x0421, 0x0422, 0x0425, 0x0426, 0x0427, 0x1201, 0x1203, 0x1204, 0x1380):
+        if self.value in (0x0005, 0x0006, 0x0007, 0x0008, 0x000D, 0x000E, 0x000F, 0x0010, 0x0017,
+                          0x0019, 0x0030, 0x0201, 0x0204, 0x0205, 0x020A, 0x020B, 0x020C, 0x020D,
+                          0x020E, 0x020F, 0x0210, 0x0302, 0x0304, 0x0420, 0x0421, 0x0422, 0x0425,
+                          0x0426, 0x0427, 0x1201, 0x1203, 0x1204, 0x1380):
             return int
         if self.value == 0x130C:
             # ALERT_ON_MESSAGE_DELIVERY doesn't actually have any value.
@@ -526,33 +527,58 @@ class OptionalParam():
         Returns the Value field of an optional SMPP parameter.
         The Length field indicates the length of the Value field in octets(integer).
         '''
-        if self.tag in (OptionalTag.DEST_ADDR_SUBUNIT, OptionalTag.DEST_NETWORK_TYPE, OptionalTag.DEST_BEARER_TYPE,
-                        OptionalTag.SOURCE_ADDR_SUBUNIT, OptionalTag.SOURCE_NETWORK_TYPE,
-                        OptionalTag.SOURCE_BEARER_TYPE, OptionalTag.SOURCE_TELEMATICS_ID, OptionalTag.PAYLOAD_TYPE,
-                        OptionalTag.MS_MSG_WAIT_FACILITIES, OptionalTag.PRIVACY_INDICATOR,
-                        OptionalTag.USER_RESPONSE_CODE, OptionalTag.LANGUAGE_INDICATOR, OptionalTag.SAR_TOTAL_SEGMENTS,
-                        OptionalTag.SAR_SEGMENT_SEQNUM, OptionalTag.SC_INTERFACE_VERSION,
-                        OptionalTag.CALLBACK_NUM_PRES_IND, OptionalTag.NUMBER_OF_MESSAGES, OptionalTag.DPF_RESULT,
-                        OptionalTag.SET_DPF, OptionalTag.MS_AVAILABILITY_STATUS, OptionalTag.DELIVERY_FAILURE_REASON,
-                        OptionalTag.MORE_MESSAGES_TO_SEND, OptionalTag.MESSAGE_STATE, OptionalTag.DISPLAY_TIME,
-                        OptionalTag.MS_VALIDITY, OptionalTag.ITS_REPLY_TYPE):
+        if self.tag in (OptionalTag.DEST_ADDR_SUBUNIT,
+                        OptionalTag.DEST_NETWORK_TYPE,
+                        OptionalTag.DEST_BEARER_TYPE,
+                        OptionalTag.SOURCE_ADDR_SUBUNIT,
+                        OptionalTag.SOURCE_NETWORK_TYPE,
+                        OptionalTag.SOURCE_BEARER_TYPE,
+                        OptionalTag.SOURCE_TELEMATICS_ID,
+                        OptionalTag.PAYLOAD_TYPE,
+                        OptionalTag.MS_MSG_WAIT_FACILITIES,
+                        OptionalTag.PRIVACY_INDICATOR,
+                        OptionalTag.USER_RESPONSE_CODE,
+                        OptionalTag.LANGUAGE_INDICATOR,
+                        OptionalTag.SAR_TOTAL_SEGMENTS,
+                        OptionalTag.SAR_SEGMENT_SEQNUM,
+                        OptionalTag.SC_INTERFACE_VERSION,
+                        OptionalTag.CALLBACK_NUM_PRES_IND,
+                        OptionalTag.NUMBER_OF_MESSAGES,
+                        OptionalTag.DPF_RESULT,
+                        OptionalTag.SET_DPF,
+                        OptionalTag.MS_AVAILABILITY_STATUS,
+                        OptionalTag.DELIVERY_FAILURE_REASON,
+                        OptionalTag.MORE_MESSAGES_TO_SEND,
+                        OptionalTag.MESSAGE_STATE,
+                        OptionalTag.DISPLAY_TIME,
+                        OptionalTag.MS_VALIDITY,
+                        OptionalTag.ITS_REPLY_TYPE):
             # This is for unsigned ints size 1
             # SMPP doc says: 'Length of value part in octets'.
             return 1
-        if self.tag in (OptionalTag.DEST_TELEMATICS_ID, OptionalTag.USER_MESSAGE_REFERENCE, OptionalTag.SOURCE_PORT,
-                        OptionalTag.DESTINATION_PORT, OptionalTag.SAR_MSG_REF_NUM, OptionalTag.SMS_SIGNAL):
+        if self.tag in (OptionalTag.DEST_TELEMATICS_ID,
+                        OptionalTag.USER_MESSAGE_REFERENCE,
+                        OptionalTag.SOURCE_PORT,
+                        OptionalTag.DESTINATION_PORT,
+                        OptionalTag.SAR_MSG_REF_NUM,
+                        OptionalTag.SMS_SIGNAL):
             return 2
         if self.tag == OptionalTag.QOS_TIME_TO_LIVE:
             # This is for unsigned ints size 4
             return 4
-        if self.tag in (OptionalTag.ADDITIONAL_STATUS_INFO_TEXT, OptionalTag.RECEIPTED_MESSAGE_ID):
-            assert isinstance(self.value, str)  # For linters
-            return len(self.value) + 1  # C Octet String (+1 for null termination)
-        if self.tag in (OptionalTag.SOURCE_SUBADDRESS, OptionalTag.DEST_SUBADDRESS, OptionalTag.CALLBACK_NUM_ATAG,
-                        OptionalTag.CALLBACK_NUM, OptionalTag.NETWORK_ERROR_CODE, OptionalTag.USSD_SERVICE_OP,
+        if self.tag in (OptionalTag.ADDITIONAL_STATUS_INFO_TEXT,
+                        OptionalTag.RECEIPTED_MESSAGE_ID):
+            assert isinstance(self.value, str) # For linters
+            return len(self.value) + 1 # C Octet String (+1 for null termination)
+        if self.tag in (OptionalTag.SOURCE_SUBADDRESS,
+                        OptionalTag.DEST_SUBADDRESS,
+                        OptionalTag.CALLBACK_NUM_ATAG,
+                        OptionalTag.CALLBACK_NUM,
+                        OptionalTag.NETWORK_ERROR_CODE,
+                        OptionalTag.USSD_SERVICE_OP,
                         OptionalTag.ITS_SESSION_INFO):
-            assert isinstance(self.value, str)  # For linters
-            return len(self.value)  # Octet String (no null termination)
+            assert isinstance(self.value, str) # For linters
+            return len(self.value) # Octet String (no null termination)
         # Only remaining option is alert_on_message_delivery; see section 5.3.2.41 of SMPP document
         return 0
 
@@ -565,16 +591,17 @@ class OptionalParam():
         length: int = self.length
         if self.tag.data_type == int:
             int_format: Dict[int, str] = {
-                1: '!HHB',  # unsigned char
-                2: '!HHH',  # unsigned short
-                4: '!HHI',  # unsigned int
+                1: '!HHB', # unsigned char
+                2: '!HHH', # unsigned short
+                4: '!HHI', # unsigned int
             }
             return pack(int_format[length], self.tag.value, length, self.value)
         if self.tag.data_type == str:
-            assert isinstance(self.value, str)  # For linters
-            val: bytes = self.value.encode('ascii')  # Octet String
-            if self.tag in (OptionalTag.ADDITIONAL_STATUS_INFO_TEXT, OptionalTag.RECEIPTED_MESSAGE_ID):
-                val += chr(0).encode('ascii')  # C Octet String, terminate with NULL
+            assert isinstance(self.value, str) # For linters
+            val: bytes = self.value.encode('ascii') # Octet String
+            if self.tag in (OptionalTag.ADDITIONAL_STATUS_INFO_TEXT,
+                            OptionalTag.RECEIPTED_MESSAGE_ID):
+                val += chr(0).encode('ascii') # C Octet String, terminate with NULL
             return pack('!HH', self.tag, length) + val
         # Only remaining option is alert_on_message_delivery; see section 5.3.2.41 of SMPP document
         if self.value:
@@ -636,14 +663,13 @@ class PduHeader():
     '''
     PDU header representation
     '''
-    pdu_length: int  # Total PDU length
-    smpp_command: SmppCommand  # SMPP command
-    command_status: SmppCommandStatus  # SMPP response status (only relevant for responses)
-    sequence_num: int  # SMPP sequence number
+    pdu_length: int # Total PDU length
+    smpp_command: SmppCommand # SMPP command
+    command_status: SmppCommandStatus # SMPP response status (only relevant for responses)
+    sequence_num: int # SMPP sequence number
 
 
 class SmppError(Exception):
-
     def __init__(self, smpp_command: SmppCommand, command_status: SmppCommandStatus) -> None:
         super().__init__()
         self.smpp_command: SmppCommand = smpp_command

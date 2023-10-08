@@ -28,7 +28,8 @@ class AbstractHook(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes, client_id: str) -> None:
+    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
+                       client_id: str) -> None:
         '''
         Called after receiving data from SMPP peer.
 
@@ -69,7 +70,8 @@ class SimpleHook(AbstractHook):
         if self.logger.isEnabledFor(TRACE):
             self.logger.trace(TRACE, 'Sending message', pdu=pdu.hex())
 
-    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes, client_id: str) -> None:
+    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
+                       client_id: str) -> None:
         if self.logger.isEnabledFor(TRACE):
             self.logger.trace('Received message', pdu=pdu.hex())
 

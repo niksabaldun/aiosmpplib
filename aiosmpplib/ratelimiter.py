@@ -40,7 +40,7 @@ class SimpleRateLimiter(AbstractRateLimiter):
         send_messages()
     '''
 
-    def __init__(self, logger: StructuredLogger, send_rate: float = 100000.00) -> None:
+    def __init__(self, logger: StructuredLogger, send_rate: float=100000.00) -> None:
         '''
         Parameters:
             logger: A python `logger <https://docs.python.org/3/library/html#Logger>`_
@@ -64,8 +64,7 @@ class SimpleRateLimiter(AbstractRateLimiter):
         self.logger.debug('Rate limiter checking if request should be delayed.')
         while self.tokens < 1:
             self._add_new_tokens()
-            self.logger.debug(
-                'Rate limiter delayed the request.',
+            self.logger.debug('Rate limiter delayed the request.',
                 delay=self.delay_for_tokens,
                 send_rate=self.send_rate,
                 effective_send_rate=self.effective_send_rate,

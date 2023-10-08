@@ -44,7 +44,7 @@ class SimpleExponentialBackoff(AbstractRetryTimer):
     Retry delay starts at the minimum and is doubled up to the maximum.
     '''
 
-    def __init__(self, min_delay: int = 1000, max_increases: int = 5) -> None:
+    def __init__(self, min_delay: int=1000, max_increases: int=5) -> None:
         '''
         Parameters:
             min_delay: Minimum (starting) delay in milliseconds.
