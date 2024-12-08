@@ -29,6 +29,7 @@ setup(
     version=about['__version__'],
     description=about['__description__'],
     long_description=long_description,
+    long_description_content_type='text/x-rst',
     # The project's main homepage.
     url=about['__url__'],
     # Author details

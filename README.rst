@@ -136,6 +136,7 @@ Sending messages is a lot more involved.
 
     Segmentation is transparent. Hooks will not be called for individual segmentsm but for
     the complete message only.
+
 1. Enqueue the message in broker.
 2. If message could not be sent, ``send_error`` hook will be called. Original message is available
    in ``smpp_message`` parameter. The ``error`` parameter contains exception that occured.
@@ -159,7 +160,7 @@ Sending messages is a lot more involved.
    In ``received`` hook, look for **DeliverSm** message whose ``is_receipt`` method
    returns ``True``. Then use ``parse_receipt`` method to get a dictionary with parsed data.
    Receipt structure is SMSC-specific, but it usually has the following items:
-   
+
    .. code-block:: python
 
        {
