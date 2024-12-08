@@ -18,7 +18,7 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def enqueue(self, message: SmppMessage) -> None:
         '''
-        enqueue/save an item.
+        Enqueue/save an item.
 
         Parameters:
             message: The item to be enqueued/saved
@@ -34,7 +34,7 @@ class AbstractBroker(ABC):
     @abstractmethod
     async def dequeue(self) -> SmppMessage:
         '''
-        dequeue an item.
+        Dequeue an item.
 
         Returns:
             Item that was dequeued.

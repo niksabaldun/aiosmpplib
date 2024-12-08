@@ -35,13 +35,15 @@ class SimpleSequenceGenerator(AbstractSequenceGenerator):
     This is an implementation of AbstractSequenceGenerator.
     '''
 
-    def __init__(self) -> None:
-        self.sequence_num: int = MIN_SEQUENCE_NUMBER - 1
+    def __init__(self, min_num: int=MIN_SEQUENCE_NUMBER, max_num=MAX_SEQUENCE_NUMBER) -> None:
+        self.min_num: int = min_num
+        self.max_num: int = max_num
+        self.sequence_num: int = min_num - 1
 
     def next_sequence(self) -> int:
-        if self.sequence_num == MAX_SEQUENCE_NUMBER:
-            # wrap around
-            self.sequence_num = MIN_SEQUENCE_NUMBER
+        if self.sequence_num == self.max_num:
+            # Wrap around
+            self.sequence_num = self.min_num
         else:
             self.sequence_num += 1
         return self.sequence_num

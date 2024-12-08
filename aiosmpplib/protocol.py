@@ -6,11 +6,19 @@ from datetime import datetime, timedelta
 from math import floor
 from struct import pack, unpack_from
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
-
 from .codec import find_codec_info
-from .state import (NPI, TON, OptionalParam, OptionalTag, PhoneNumber, SmppCommand,
-                    SmppCommandStatus, SmppDataCoding, PduHeader)
-from .utils import check_param, FixedOffset
+from .state import (
+    NPI,
+    TON,
+    OptionalParam,
+    OptionalTag,
+    PhoneNumber,
+    SmppCommand,
+    SmppCommandStatus,
+    SmppDataCoding,
+    PduHeader,
+)
+from .utils import IE_ID_16BIT, check_param, FixedOffset
 
 
 NULL = b'\x00'
@@ -34,6 +42,7 @@ class Trackable(Base):
         log_id: A unique identifier of this request
         extra_data: A custom string associated with this request.
     '''
+
     log_id: str = ''
     extra_data: str = ''
 
@@ -52,11 +61,12 @@ class SmppMessage(Base):
         sequence_num: SMPP sequence number (for requests, generated before sending)
         command_status: SMPP response status (only relevant for responses)
     '''
+
     sequence_num: int = 0
     command_status: SmppCommandStatus = SmppCommandStatus.ESME_ROK
 
     def __post_init__(self) -> None:
-        check_param(self.sequence_num, 'sequence_num', int)
+        check_param(self.sequence_num, 'sequence_num', int, maxlen=4)
         check_param(self.command_status, 'command_status', SmppCommandStatus)
         super().__post_init__()
 
@@ -89,7 +99,7 @@ class SmppMessage(Base):
             pdu_length=pdu_length,
             smpp_command=SmppCommand(command_id),
             command_status=SmppCommandStatus(command_status_id),
-            sequence_num=sequence_num
+            sequence_num=sequence_num,
         )
 
     def pdu(self) -> bytes:
@@ -100,8 +110,13 @@ class SmppMessage(Base):
         return self.pack_header(PDU_HEADER_LENGTH)
 
     @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+    def from_pdu(
+        cls,
+        pdu: bytes,
+        header: PduHeader,
+        default_encoding: str = '',
+        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+    ) -> SmppMessage:
         '''
         Creates SmppMessage object from data parsed from byte sequence.
         PDU header needs to be pre-parsed because it contains PDU length and command type.
@@ -162,19 +177,20 @@ class SubmitSm(Trackable, SmppMessage):
                         `encode <https://docs.python.org/3/library/codecs.html#codecs.encode>`_
                         method
     '''
+
     short_message: str = ''
     source: PhoneNumber = field(default_factory=lambda: PhoneNumber(''))
     destination: PhoneNumber = field(default_factory=lambda: PhoneNumber(''))
     service_type: str = ''
-    esm_class: int = 0x00000000
-    protocol_id: int = 0x00000000
-    priority_flag:int = 0x00000000
+    esm_class: int = 0b00000000
+    protocol_id: int = 0b00000000
+    priority_flag: int = 0b00000000
     schedule_delivery_time: Optional[Union[datetime, timedelta]] = None
     validity_period: Optional[Union[datetime, timedelta]] = None
     registered_delivery: int = 0b00000001
-    replace_if_present_flag: int = 0x00000000
+    replace_if_present_flag: int = 0b00000000
     encoding: Optional[str] = None
-    sm_default_msg_id: int = 0x00000000
+    sm_default_msg_id: int = 0b00000000
     message_payload: str = ''
     optional_params: Optional[List[OptionalParam]] = None
     auto_message_payload: bool = True
@@ -185,16 +201,20 @@ class SubmitSm(Trackable, SmppMessage):
         check_param(self.source, 'source', PhoneNumber)
         check_param(self.destination, 'destination', PhoneNumber)
         check_param(self.service_type, 'service_type', str, maxlen=5)
-        check_param(self.esm_class, 'esm_class', int)
-        check_param(self.protocol_id, 'protocol_id', int)
-        check_param(self.priority_flag, 'priority_flag', int)
-        check_param(self.schedule_delivery_time, 'schedule_delivery_time', (datetime, timedelta),
-                    optional=True)
+        check_param(self.esm_class, 'esm_class', int, maxlen=1)
+        check_param(self.protocol_id, 'protocol_id', int, maxlen=1)
+        check_param(self.priority_flag, 'priority_flag', int, maxlen=1)
+        check_param(
+            self.schedule_delivery_time,
+            'schedule_delivery_time',
+            (datetime, timedelta),
+            optional=True,
+        )
         check_param(self.validity_period, 'validity_period', (datetime, timedelta), optional=True)
-        check_param(self.registered_delivery, 'registered_delivery', int)
-        check_param(self.replace_if_present_flag, 'replace_if_present_flag', int)
+        check_param(self.registered_delivery, 'registered_delivery', int, maxlen=1)
+        check_param(self.replace_if_present_flag, 'replace_if_present_flag', int, maxlen=1)
         check_param(self.encoding, 'encoding', str, optional=True)
-        check_param(self.sm_default_msg_id, 'sm_default_msg_id', int)
+        check_param(self.sm_default_msg_id, 'sm_default_msg_id', int, maxlen=1)
         check_param(self.message_payload, 'message_payload', str)
         check_param(self.optional_params, 'optional_params', list, optional=True)
         check_param(self.auto_message_payload, 'auto_message_payload', bool)
@@ -207,8 +227,10 @@ class SubmitSm(Trackable, SmppMessage):
             if not isinstance(opt_param, OptionalParam):
                 raise ValueError('`optional_params` should be a list of OptionalParam objects')
             if opt_param.tag == OptionalTag.MESSAGE_PAYLOAD:
-                raise ValueError('`OptionalTag.MESSAGE_PAYLOAD` cannot be included in '
-                                 '`optional_params`. Use `message_payload` parameter instead.')
+                raise ValueError(
+                    '`OptionalTag.MESSAGE_PAYLOAD` cannot be included in '
+                    '`optional_params`. Use `message_payload` parameter instead.'
+                )
 
         if not self.short_message and not self.message_payload:
             raise ValueError('Either short_message or message_payload must be specified')
@@ -218,6 +240,7 @@ class SubmitSm(Trackable, SmppMessage):
         # default_encoding and custom_codecs need to be set by ESME/SMSC before sending
         self._default_encoding: str = DEFAULT_ENCODING
         self._custom_codecs: Optional[Dict[str, CodecInfo]] = None
+        self._encoded_message: bytes = b''
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -236,8 +259,9 @@ class SubmitSm(Trackable, SmppMessage):
         if isinstance(time_object, datetime):
             # datetime is converted to absolute validity
             tenth_second: str = str(time_object.microsecond // 100000)
-            offset: Optional[timedelta] = (time_object.tzinfo.utcoffset(time_object)
-                                           if time_object.tzinfo else None)
+            offset: Optional[timedelta] = (
+                time_object.tzinfo.utcoffset(time_object) if time_object.tzinfo else None
+            )
             offset_str: str
             prefix: str
             if not offset:
@@ -290,7 +314,7 @@ class SubmitSm(Trackable, SmppMessage):
             return timedelta(days=total_days, seconds=total_seconds)
         # Absolute validity, convert to datetime
         tenth_second: int = int(smpp_time[12:13])
-        offset_str: str = smpp_time[15:16] + smpp_time[13:15]
+        offset_str: str = smpp_time[15:16] + smpp_time[13:15] + '00'
         offset: FixedOffset = FixedOffset.from_timezone(offset_str)
         return datetime(
             year=year,
@@ -299,12 +323,13 @@ class SubmitSm(Trackable, SmppMessage):
             hour=hour,
             minute=minute,
             second=second,
-            microsecond=tenth_second * 1000000,
+            microsecond=tenth_second * 100000,
             tzinfo=offset,
         )
 
-    def set_encoding_info(self, default_encoding: str,
-                          custom_codecs: Optional[Dict[str, CodecInfo]]) -> None:
+    def set_encoding_info(
+        self, default_encoding: str, custom_codecs: Optional[Dict[str, CodecInfo]]
+    ) -> None:
         '''
         Sets info neccessary for encoding message text.
 
@@ -314,6 +339,15 @@ class SubmitSm(Trackable, SmppMessage):
         '''
         self._default_encoding = default_encoding
         self._custom_codecs = custom_codecs
+
+    def set_encoded_message(self, encoded_message: bytes) -> None:
+        '''
+        Sets pre-encode message.
+
+        Parameters:
+            encoded message: Message encoded in bytes.
+        '''
+        self._encoded_message = encoded_message
 
     def smpp_encode(self, text: str) -> bytes:
         '''
@@ -337,47 +371,118 @@ class SubmitSm(Trackable, SmppMessage):
         return result
 
     def pdu(self) -> bytes:
-        # If encoding is set to auto, smpp_encode will set encoding param of the message
-        # to ucs2 if default encoding cannot be used
-        encoded_short_message: bytes = self.smpp_encode(self.short_message or self.message_payload)
         encoded_message_payload: bytes = b''
-        if self.encoding:
-            data_coding: int = SmppDataCoding[self.encoding].value
-        else:
-            data_coding: int = 0 # SMSC default
-        sm_length: int = len(encoded_short_message)
-        if sm_length > 254 and self.short_message and not self.auto_message_payload:
-            # short_message supports up to 254 bytes, so this does not fit,
-            # but automatic moving to message_payload was deactivated
-            raise ValueError(f'Message is too long ({sm_length} bytes, maximum is 254)')
-        if sm_length > 254 or self.message_payload:
-            tag: int = OptionalTag.MESSAGE_PAYLOAD.value
-            encoded_message_payload = pack('!HH', tag, sm_length) + encoded_short_message
-            encoded_short_message = b''
-            sm_length = 0
+        if not self._encoded_message:  # If concatenation is used, it will already be encoded
+            # If encoding is set to auto, smpp_encode will set encoding param of the message
+            # to ucs2 if default encoding cannot be used
+            self._encoded_message = self.smpp_encode(self.short_message or self.message_payload)
+            sm_length: int = len(self._encoded_message)
+            if sm_length > 254 and self.short_message and not self.auto_message_payload:
+                # short_message supports up to 254 bytes, so this does not fit,
+                # but automatic moving to message_payload was deactivated
+                raise ValueError(f'Message is too long ({sm_length} bytes, maximum is 254)')
+            if sm_length > 254 or self.message_payload:
+                tag: int = OptionalTag.MESSAGE_PAYLOAD.value
+                encoded_message_payload = pack('!HH', tag, sm_length) + self._encoded_message
+                self._encoded_message = b''
+                sm_length = 0
+        # 0 = SMSC default
+        data_coding: int = SmppDataCoding[self.encoding].value if self.encoding else 0
 
+        optional_params: bytes
+        if self.esm_class & 0b01000000:
+            # UDHI flag set, concatenation-related parameters are not allowed
+            optional_params = b''.join(
+                opt_param.tlv
+                for opt_param in self.optional_params or []
+                if opt_param.tag
+                not in (
+                    OptionalTag.SAR_MSG_REF_NUM,
+                    OptionalTag.SAR_TOTAL_SEGMENTS,
+                    OptionalTag.SAR_SEGMENT_SEQNUM,
+                )
+            )
+        else:
+            optional_params = b''.join(opt_param.tlv for opt_param in self.optional_params or [])
         body: bytes = (
-            self.service_type.encode('ascii') + NULL
+            self.service_type.encode('ascii')
+            + NULL
             + pack('!BB', self.source.ton, self.source.npi)
-            + self.source.number.encode('ascii') + NULL
+            + self.source.number.encode('ascii')
+            + NULL
             + pack('!BB', self.destination.ton, self.destination.npi)
-            + self.destination.number.encode('ascii') + NULL
+            + self.destination.number.encode('ascii')
+            + NULL
             + pack('!BBB', self.esm_class, self.protocol_id, self.priority_flag)
-            + self.datetime_to_smpp_time(self.schedule_delivery_time).encode('ascii') + NULL
-            + self.datetime_to_smpp_time(self.validity_period).encode('ascii') + NULL
+            + self.datetime_to_smpp_time(self.schedule_delivery_time).encode('ascii')
+            + NULL
+            + self.datetime_to_smpp_time(self.validity_period).encode('ascii')
+            + NULL
             + pack('!BB', self.registered_delivery, self.replace_if_present_flag)
-            + pack('!BBB', data_coding, self.sm_default_msg_id, sm_length)
-            + encoded_short_message
+            + pack('!BBB', data_coding, self.sm_default_msg_id, len(self._encoded_message))
+            + self._encoded_message
             + encoded_message_payload
-            + b''.join(opt_param.tlv for opt_param in self.optional_params or [])
+            + optional_params
             # optional params may be included in ANY ORDER within
             # the `Optional Parameters` section of the SMPP PDU.
         )
         return self.pack_header(PDU_HEADER_LENGTH + len(body)) + body
 
+    def clone(self) -> SubmitSm:
+        return SubmitSm(
+            sequence_num=self.sequence_num,
+            short_message=self.short_message,
+            source=self.source,
+            destination=self.destination,
+            service_type=self.service_type,
+            esm_class=self.esm_class,
+            protocol_id=self.protocol_id,
+            priority_flag=self.priority_flag,
+            schedule_delivery_time=self.schedule_delivery_time,
+            validity_period=self.validity_period,
+            registered_delivery=self.registered_delivery,
+            replace_if_present_flag=self.replace_if_present_flag,
+            encoding=self.encoding,
+            sm_default_msg_id=self.sm_default_msg_id,
+            message_payload=self.message_payload,
+            optional_params=self.optional_params.copy() if self.optional_params else [],
+            auto_message_payload=self.auto_message_payload,
+            error_handling=self.error_handling,
+            log_id=self.log_id,
+            extra_data=self.extra_data,
+        )
+
+    def is_segmented(self) -> bool:
+        for opt_param in self.optional_params or []:
+            if opt_param.tag in (
+                OptionalTag.SAR_MSG_REF_NUM,
+                OptionalTag.SAR_SEGMENT_SEQNUM,
+                OptionalTag.SAR_TOTAL_SEGMENTS,
+            ):
+                return True
+        return False
+
+    def get_segmentation_data(self) -> Tuple[int, int, int]:
+        ref_num: int = 0
+        seq_num: int = 0
+        total_segments: int = 0
+        for opt_param in self.optional_params or []:
+            if opt_param.tag == OptionalTag.SAR_MSG_REF_NUM:
+                ref_num = opt_param.value  # type: ignore ; must be int
+            elif opt_param.tag == OptionalTag.SAR_SEGMENT_SEQNUM:
+                seq_num = opt_param.value  # type: ignore ; must be int
+            elif opt_param.tag == OptionalTag.SAR_TOTAL_SEGMENTS:
+                total_segments = opt_param.value  # type: ignore ; must be int
+        return ref_num, seq_num, total_segments
+
     @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+    def from_pdu(
+        cls,
+        pdu: bytes,
+        header: PduHeader,
+        default_encoding: str = '',
+        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+    ) -> SmppMessage:
         def get_c_octet_string() -> str:
             nonlocal index
             str_end: int = pdu.index(NULL, index)
@@ -387,8 +492,8 @@ class SubmitSm(Trackable, SmppMessage):
 
         def get_octet_string(count: int) -> str:
             nonlocal index
-            octet_string: str = pdu[index:index+count].decode('ascii')
-            if octet_string.endswith(chr(0)): # String may be null-terminated
+            octet_string: str = pdu[index : index + count].decode('ascii')
+            if octet_string.endswith(chr(0)):  # String may be null-terminated
                 octet_string = octet_string[:-1]
             index += count
             return octet_string
@@ -396,15 +501,43 @@ class SubmitSm(Trackable, SmppMessage):
         def get_integer(count: int) -> int:
             nonlocal index
             int_format: Dict[int, str] = {
-                1: '!B', # unsigned char
-                2: '!H', # unsigned short
-                4: '!I', # unsigned int
+                1: '!B',  # unsigned char
+                2: '!H',  # unsigned short
+                4: '!I',  # unsigned int
             }
             integer: int = unpack_from(int_format[count], pdu, index)[0]
             index += count
             return integer
 
-        index: int = PDU_HEADER_LENGTH # Only body is parsed here, header is pre-parsed
+        def decode_message(raw_message: bytes) -> str:
+            nonlocal esm_class
+            nonlocal codec_info
+            nonlocal optional_params
+            ref_num: int = 0
+            seq_num: int = 0
+            total: int = 0
+            ind: int = 0
+            if esm_class & 0b01000000:
+                # UDHI flag set, decode UDH
+                udh_len: int
+                ie_id: int
+                udh_len, ie_id = unpack_from('!BB', raw_message, 0)
+                if ie_id == IE_ID_16BIT:
+                    ref_num = unpack_from('!I', raw_message, 3)[0]
+                    ind = 5
+                else:
+                    ref_num = unpack_from('!B', raw_message, 3)[0]
+                    ind = 4
+                total = unpack_from('!B', raw_message, ind)[0]
+                seq_num = unpack_from('!B', raw_message, ind + 1)[0]
+                ind = udh_len + 1
+                optional_params.append(OptionalParam(OptionalTag.SAR_MSG_REF_NUM, ref_num))
+                optional_params.append(OptionalParam(OptionalTag.SAR_SEGMENT_SEQNUM, seq_num))
+                optional_params.append(OptionalParam(OptionalTag.SAR_TOTAL_SEGMENTS, total))
+            return codec_info.decode(raw_message[ind:])[0]
+
+        optional_params: List[OptionalParam] = []
+        index: int = PDU_HEADER_LENGTH  # Only body is parsed here, header is pre-parsed
         service_type: str = get_c_octet_string()
         source_ton: TON = TON(get_integer(1))
         source_npi: NPI = NPI(get_integer(1))
@@ -424,21 +557,25 @@ class SubmitSm(Trackable, SmppMessage):
             encoding: str = SmppDataCoding(data_coding).name
         else:
             encoding: str = default_encoding
-        codec_info: CodecInfo = find_codec_info(encoding, custom_codecs)
+        codec_info: CodecInfo
+        try:
+            codec_info = find_codec_info(encoding, custom_codecs)
+        except LookupError:
+            # Try with ASCII if codec not found
+            codec_info = find_codec_info('ascii', custom_codecs)
         sm_default_msg_id: int = get_integer(1)
         sm_length: int = get_integer(1)
-        short_message: str = codec_info.decode(pdu[index:index+sm_length])[0]
+        short_message: str = decode_message(pdu[index : index + sm_length])
         index += sm_length
 
         message_payload: str = ''
         # Read optional parameters, if any
-        optional_params: List[OptionalParam] = []
         while index < header.pdu_length:
             tag: OptionalTag = OptionalTag(get_integer(2))
             length: int = get_integer(2)
             if tag == OptionalTag.MESSAGE_PAYLOAD:
                 # message_payload is a special case, it is an alternative to short_message
-                message_payload = codec_info.decode(pdu[index:index+length])[0]
+                message_payload = decode_message(pdu[index : index + length])
                 index += length
             elif tag.data_type == int:
                 int_value: int = get_integer(length)
@@ -533,6 +670,7 @@ class SubmitSmResp(Trackable, SmppMessage):
     Parameters:
         message_id: Message ID assigned by the SMSC.
     '''
+
     message_id: str = ''
 
     def __post_init__(self) -> None:
@@ -548,11 +686,16 @@ class SubmitSmResp(Trackable, SmppMessage):
         return self.pack_header(PDU_HEADER_LENGTH + len(body)) + body
 
     @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+    def from_pdu(
+        cls,
+        pdu: bytes,
+        header: PduHeader,
+        default_encoding: str = '',
+        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+    ) -> SmppMessage:
         # pylint: disable=unused-argument
         # Decode the full body of the PDU, minus terminating NULL char
-        message_id: str = pdu[PDU_HEADER_LENGTH:header.pdu_length-1].decode('ascii')
+        message_id: str = pdu[PDU_HEADER_LENGTH : header.pdu_length - 1].decode('ascii')
         return cls(
             sequence_num=header.sequence_num,
             command_status=header.command_status,
@@ -573,6 +716,11 @@ class DeliverSm(SubmitSm):
     '''
     Represents the deliver_sm SMPP message type.
     '''
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self._parsed_receipt: Optional[Dict[str, Any]] = None
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.DELIVER_SM
@@ -591,6 +739,9 @@ class DeliverSm(SubmitSm):
         if not self.is_receipt():
             return {}
 
+        if self._parsed_receipt is not None:
+            return self._parsed_receipt
+
         def get_receipt_param() -> Tuple[Optional[str], Optional[str]]:
             nonlocal index
             str_end: int = self.short_message.find(':', index)
@@ -599,13 +750,13 @@ class DeliverSm(SubmitSm):
             param: str = self.short_message[index:str_end].lower()
             index = str_end + 1
             str_end = self.short_message.find(' ', index)
-            if str_end == -1 or param == 'text': # Text must be last
+            if str_end == -1 or param == 'text':  # Text must be last
                 str_end = len(self.short_message)
             value: str = self.short_message[index:str_end]
             index = str_end + 1
             return param, value
 
-        rcpt_data: Dict[str, Any] = {}
+        self._parsed_receipt = {}
         index: int = 0
         rcpt_param: Optional[str]
         rcpt_value: Optional[str]
@@ -613,26 +764,32 @@ class DeliverSm(SubmitSm):
             rcpt_param, rcpt_value = get_receipt_param()
             if rcpt_param is None or rcpt_value is None:
                 break
-            if rcpt_param in ('sub', 'dlvrd'):
-                rcpt_data[rcpt_param] = int(rcpt_value)
+            if rcpt_param in ('sub', 'dlvrd', 'err'):
+                self._parsed_receipt[rcpt_param] = int(rcpt_value)
             elif rcpt_param in ('submit date', 'done date'):
-                rcpt_data[rcpt_param] = datetime.strptime(rcpt_value, '%y%m%d%H%M')
-            elif rcpt_param in ('id', 'stat', 'err', 'text'):
-                rcpt_data[rcpt_param] = rcpt_value
+                self._parsed_receipt[rcpt_param] = datetime.strptime(rcpt_value, '%y%m%d%H%M')
+            elif rcpt_param in ('id', 'stat', 'text'):
+                self._parsed_receipt[rcpt_param] = rcpt_value
             else:
-                rcpt_data[rcpt_param] = rcpt_value
+                self._parsed_receipt[rcpt_param] = rcpt_value
 
-        smsc_message_id: Optional[str] = rcpt_data.get('id') # Get message ID from report data
+        smsc_message_id: Optional[str] = self._parsed_receipt.get(
+            'id'
+        )  # Get message ID from report data
         if not smsc_message_id and self.optional_params:
             # Message ID not found, check if receipted_message_id param exists
-            id_param: Optional[OptionalParam] = next((
-                param for param in self.optional_params
-                if param.tag == OptionalTag.RECEIPTED_MESSAGE_ID
-            ), None)
+            id_param: Optional[OptionalParam] = next(
+                (
+                    param
+                    for param in self.optional_params
+                    if param.tag == OptionalTag.RECEIPTED_MESSAGE_ID
+                ),
+                None,
+            )
             if id_param:
-                rcpt_data['id'] = id_param.value
+                self._parsed_receipt['id'] = id_param.value
 
-        return rcpt_data
+        return self._parsed_receipt
 
     @staticmethod
     def encode_receipt(rcpt_data: Dict[str, Any]) -> str:
@@ -643,21 +800,23 @@ class DeliverSm(SubmitSm):
             rcpt_data: A dictionary containing receipt data.
         '''
         # Receipt format is SMSC-specific, but it usually follows the following pattern
-        msg_id: str = rcpt_data.get('id', '') # Message ID allocated by the SMSC when submitted.
-        sub: int = rcpt_data.get('sub', 0) # Number of short messages originally submitted.
-        dlvrd: int = rcpt_data.get('dlvrd', 0) # Number of short messages delivered.
+        msg_id: str = rcpt_data.get('id', '')  # Message ID allocated by the SMSC when submitted.
+        sub: int = rcpt_data.get('sub', 0)  # Number of short messages originally submitted.
+        dlvrd: int = rcpt_data.get('dlvrd', 0)  # Number of short messages delivered.
         # The time and date at which the message was submitted.
         submit_date: Optional[datetime] = rcpt_data.get('submit date')
         submit_date_str: str = submit_date.strftime('%y%m%d%H%M') if submit_date else ''
         # The time and date at which the message reached its final state.
         done_date: Optional[datetime] = rcpt_data.get('done date')
         done_date_str: str = done_date.strftime('%y%m%d%H%M') if done_date else ''
-        stat: str = rcpt_data.get('stat', '') # The final status of the message.
-        err: str = rcpt_data.get('err', '') # Network specific error code or an SMSC error code.
-        text: str = rcpt_data.get('text', '') # The first 20 characters of the short message.
-        return (f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
-                f' submit date:{submit_date_str} done date:{done_date_str}'
-                f' stat:{stat} err:{err} Text:{text:20}')
+        stat: str = rcpt_data.get('stat', '')  # The final status of the message.
+        err: int = rcpt_data.get('err', 0)  # Network specific error code or an SMSC error code.
+        text: str = rcpt_data.get('text', '')  # The first 20 characters of the short message.
+        return (
+            f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
+            f' submit date:{submit_date_str} done date:{done_date_str}'
+            f' stat:{stat} err:{err:03d} Text:{text:20}'
+        )
 
 
 @dataclass
@@ -665,6 +824,7 @@ class DeliverSmResp(SubmitSmResp):
     '''
     Represents the deliver_sm_resp SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.DELIVER_SM_RESP
@@ -675,6 +835,7 @@ class GenericNack(Trackable, SmppMessage):
     '''
     Represents the generic_nack SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.GENERIC_NACK
@@ -693,8 +854,9 @@ class BindTransceiver(SmppMessage):
         addr_ton: Type of Number for ESME address(es) served via this SMPP session.
         addr_npi: Numbering Plan Indicator for ESME address(es) served via this SMPP session.
         address_range: A single ESME address or a range of ESME addresses served via
-                        this SMPP transceiver session.
+                       this SMPP transceiver session.
     '''
+
     system_id: str = ''
     password: str = ''
     system_type: str = ''
@@ -707,7 +869,7 @@ class BindTransceiver(SmppMessage):
         check_param(self.system_id, 'system_id', str, maxlen=15)
         check_param(self.password, 'password', str, maxlen=8)
         check_param(self.system_type, 'system_type', str, maxlen=12)
-        check_param(self.interface_version, 'interface_version', int)
+        check_param(self.interface_version, 'interface_version', int, maxlen=1)
         check_param(self.addr_ton, 'addr_ton', TON)
         check_param(self.addr_npi, 'addr_npi', NPI)
         check_param(self.address_range, 'address_range', str, maxlen=40)
@@ -718,17 +880,26 @@ class BindTransceiver(SmppMessage):
 
     def pdu(self) -> bytes:
         body: bytes = (
-            self.system_id.encode('ascii') + NULL
-            + self.password.encode('ascii') + NULL
-            + self.system_type.encode('ascii') + NULL
+            self.system_id.encode('ascii')
+            + NULL
+            + self.password.encode('ascii')
+            + NULL
+            + self.system_type.encode('ascii')
+            + NULL
             + pack('!BBB', self.interface_version, self.addr_ton, self.addr_npi)
-            + self.address_range.encode('ascii') + NULL
+            + self.address_range.encode('ascii')
+            + NULL
         )
         return self.pack_header(PDU_HEADER_LENGTH + len(body)) + body
 
     @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+    def from_pdu(
+        cls,
+        pdu: bytes,
+        header: PduHeader,
+        default_encoding: str = '',
+        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+    ) -> SmppMessage:
         # pylint: disable=unused-argument
         def get_c_octet_string() -> str:
             nonlocal index
@@ -743,7 +914,7 @@ class BindTransceiver(SmppMessage):
             index += 1
             return integer
 
-        index: int = PDU_HEADER_LENGTH # Only body is parsed here, header is pre-parsed
+        index: int = PDU_HEADER_LENGTH  # Only body is parsed here, header is pre-parsed
         system_id: str = get_c_octet_string()
         password: str = get_c_octet_string()
         system_type: str = get_c_octet_string()
@@ -786,12 +957,13 @@ class BindTransceiverResp(SmppMessage):
         system_id: SMSC system ID.
         sc_interface_version: Optional SMPP version supported by SMSC.
     '''
+
     system_id: str = ''
     sc_interface_version: Optional[int] = None
 
     def __post_init__(self) -> None:
         check_param(self.system_id, 'system_id', str, maxlen=15)
-        check_param(self.sc_interface_version, 'sc_interface_version', int, optional=True)
+        check_param(self.sc_interface_version, 'sc_interface_version', int, optional=True, maxlen=1)
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -804,8 +976,13 @@ class BindTransceiverResp(SmppMessage):
         return self.pack_header(PDU_HEADER_LENGTH + len(body)) + body
 
     @classmethod
-    def from_pdu(cls, pdu: bytes, header: PduHeader, default_encoding: str='',
-                 custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> SmppMessage:
+    def from_pdu(
+        cls,
+        pdu: bytes,
+        header: PduHeader,
+        default_encoding: str = '',
+        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+    ) -> SmppMessage:
         # pylint: disable=unused-argument
         index: int = pdu.index(NULL, PDU_HEADER_LENGTH)
         system_id: str = pdu[PDU_HEADER_LENGTH:index].decode('ascii')
@@ -838,6 +1015,7 @@ class BindTransmitter(BindTransceiver):
     '''
     Represents the bind_transmitter SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.BIND_TRANSMITTER
@@ -848,6 +1026,7 @@ class BindTransmitterResp(BindTransceiverResp):
     '''
     Represents the bind_transmitter_resp SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.BIND_TRANSMITTER_RESP
@@ -858,6 +1037,7 @@ class BindReceiver(BindTransceiver):
     '''
     Represents the bind_receiver SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.BIND_RECEIVER
@@ -868,6 +1048,7 @@ class BindReceiverResp(BindTransceiverResp):
     '''
     Represents the bind_receiver_resp SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.BIND_RECEIVER_RESP
@@ -878,6 +1059,7 @@ class EnquireLink(SmppMessage):
     '''
     Represents the enquire_link SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.ENQUIRE_LINK
@@ -888,6 +1070,7 @@ class EnquireLinkResp(SmppMessage):
     '''
     Represents the enquire_link_resp SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.ENQUIRE_LINK_RESP
@@ -898,6 +1081,7 @@ class Unbind(SmppMessage):
     '''
     Represents the unbind SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.UNBIND
@@ -908,6 +1092,7 @@ class UnbindResp(SmppMessage):
     '''
     Represents the unbind_resp SMPP message type.
     '''
+
     @property
     def smpp_command(self) -> SmppCommand:
         return SmppCommand.UNBIND_RESP

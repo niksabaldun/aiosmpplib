@@ -148,5 +148,5 @@ class SimpleThrottleHandler(AbstractThrottleHandler):
         self.throttle_responses += 1
 
     async def throttle_delay(self) -> float:
-        # todo: sleep in an exponential manner up to a maximum then wrap around.
+        # TODO: sleep in an exponential manner up to a maximum then wrap around.
         return self.throttle_wait

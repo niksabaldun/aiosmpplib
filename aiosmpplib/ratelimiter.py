@@ -62,25 +62,26 @@ class SimpleRateLimiter(AbstractRateLimiter):
 
     async def limit(self) -> None:
         self.logger.debug('Rate limiter checking if request should be delayed.')
-        while self.tokens < 1:
-            self._add_new_tokens()
+        self._add_new_tokens()
+        while self.tokens < 1.0:
             self.logger.debug('Rate limiter delayed the request.',
                 delay=self.delay_for_tokens,
                 send_rate=self.send_rate,
                 effective_send_rate=self.effective_send_rate,
             )
-            # todo: sleep in an exponential manner up to a maximum then wrap around.
+            # TODO: sleep in an exponential manner up to a maximum then wrap around.
             await asyncio.sleep(self.delay_for_tokens)
+            self._add_new_tokens()
 
         self.messages_delivered += 1
-        self.tokens -= 1
+        self.tokens -= 1.0
 
     def _add_new_tokens(self) -> None:
         now: float = time.monotonic()
         time_since_update: float = now - self.updated_at
         self.effective_send_rate = self.messages_delivered / time_since_update
         new_tokens: float = time_since_update * self.send_rate
-        if new_tokens > 1:
+        if new_tokens > 1.0:
             self.tokens = min(self.tokens + new_tokens, self.max_tokens)
             self.updated_at = now
             self.messages_delivered = 0

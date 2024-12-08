@@ -109,7 +109,7 @@ def test_delivery_receipt():
         'submit date': test_date,
         'done date': test_date,
         'stat': stat,
-        'err': '000',
+        'err': 0,
         'text': text,
     }
     receipt_text: str = (f'id:{msg_id} sub:001 dlvrd:001 submit date:{test_date_str} '

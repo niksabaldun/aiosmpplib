@@ -39,7 +39,7 @@ TEST_DATA: List[Tuple[str, bytes]] = [
     ('utf-16be', b'\x00H\x00\xfc\x00l\x00k'),
     ('ucs2', b'\x00H\x00\xfc\x00l\x00k'),
     ('gsm0338', b'H\x7elk'),
-    ('gsm0338-packed', b'H?{\r'),
+    ('gsm0338_packed', b'H?{\r'),
 ]
 
 

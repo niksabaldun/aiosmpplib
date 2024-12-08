@@ -12,6 +12,8 @@ as a separate library.
 
 Currently, only partial ESME functionality is implemented, and only SMPP version 3.4 is supported.
 
+> :warning: **Version 0.7.0 introduces breaking changes to Correlator, due to implementation of message segmentation.**
+
 Full documentation is not available at this time.
 
 .. _naz: https://github.com/komuw/naz
@@ -86,15 +88,20 @@ Your application interacts with ESME via three interfaces: broker, correlator an
   get messages from persistent storage. The library provides ``json_encode`` and ``json_decode``
   convenience methods which can be used to convert messages to/from JSON. Again, while any message
   can be serialized, it probably only makes sense for **SubmitSm**, and possibly **DeliverSm**.
-* Correlator is an interface that does two types of correlation:
+* Correlator is an interface that does four types of correlation:
 
   * Outgoing SMPP requests are correlated with received responses.
+  * Parts of the segmented SubmitSm messages are correlated with original messages
+  * Parts of the segmented DeliverSm messages are correlated based on message reference number
   * Outgoing SMS messages (SubmitSm) are correlated with delivery receipts (DeliverSm).
 
   Delivery receipts may be received days after original message is sent, so this type of
-  correlation should be persisted. Subclass **SimpleCorrelator** and override ``put_delivery`` and
-  ``get_delivery`` methods. If you want to implement more efficient request/response correlation,
-  subclass **AbstractCorrelator** and also override ``get`` and ``put`` methods.
+  correlation should be persisted. Subclass **SimpleCorrelator** and override ``put_delivery``,
+  ``get_delivery`` and ``get_segmented`` methods. If you want to implement more efficient
+  request/response correlation, subclass **AbstractCorrelator** and also override
+  ``get`` and ``put`` methods.
+
+  **SimpleCorrelator** can do a simple file persistence if  ``directory`` parameter is provided.
 * Hook is an interface with three async methods:
 
   * ``sending``: Called before sending any message to SMSC.
@@ -108,7 +115,8 @@ Incoming message flow
 _____________________
 Receiving messages is straightforward. The ``received`` hook will be called. If the
 ``smpp_message`` parameter is of type **DeliverSm** and its ``is_receipt`` method returns ``False``,
-it is an incoming SMS. Store it as appropriate.
+it is an incoming SMS. Store it as appropriate. If the message was segmented, segments will be
+reassembled ba the correlator, and  ``received`` hook called for the complete message only.
 
 Outgoing message flow
 _____________________
@@ -117,8 +125,19 @@ Sending messages is a lot more involved.
 1. Create a **SubmitSm** message with unique ``log_id`` and optionally ``extra_data`` parameters.
    Any message related to this message will have the same ``log_id`` and ``extra_data``,
    provided that correlator did its job.
-2. Enqueue the message in broker.
-3. If message could not be sent, ``send_error`` hook will be called. Original message is available
+   If encoded message text is longer than 254 bytes, it is handled as follows.
+
+   * If ``auto_message_payload`` parameter is True, text will be moved to
+     ``message_payload`` optional parameter.
+   * If ``auto_message_payload`` parameter is False and seventh bit in ``esm_class`` parameter is
+     set (e.g. 0b01000000), the message will be segmented using UDH method.
+   * If ``auto_message_payload`` parameter is False and seventh bit in ``esm_class`` parameter is
+     not set, the message will be segmented using SAR (Segmentation And Reassembly) method.
+
+    Segmentation is transparent. Hooks will not be called for individual segmentsm but for
+    the complete message only.
+1. Enqueue the message in broker.
+2. If message could not be sent, ``send_error`` hook will be called. Original message is available
    in ``smpp_message`` parameter. The ``error`` parameter contains exception that occured.
 
    * ValueError indicates that the message couldn't be encoded to PDU (probably invalid parameters).
@@ -128,7 +147,7 @@ Sending messages is a lot more involved.
 
    Whichever error occured, the message will not be re-sent automatically.
    User application must implement retry mechanism, if required.
-4. If the SMSC does respond, check the response in ``received`` hook.
+3. If the SMSC does respond, check the response in ``received`` hook.
    The ``smpp_message`` parameter will be either:
 
    * **SubmitSmResp** - If ``command_status`` member is anything other than
@@ -136,7 +155,7 @@ Sending messages is a lot more involved.
    * **GenericNack** - The request was not understood by SMSC, probably due to network error.
 
    Again, if the message was rejected, it will not be re-sent automatically.
-5. If the request was accepted, a delivery receipt should arrive after some time.
+4. If the request was accepted, a delivery receipt should arrive after some time.
    In ``received`` hook, look for **DeliverSm** message whose ``is_receipt`` method
    returns ``True``. Then use ``parse_receipt`` method to get a dictionary with parsed data.
    Receipt structure is SMSC-specific, but it usually has the following items:
@@ -150,10 +169,12 @@ Sending messages is a lot more involved.
            'submit date': datetime # The time and date at which the message was submitted.
            'done date': datetime # The time and date at which the message reached its final state.
            'stat': str # The final status of the message.
-           'err': str # Network specific error code or an SMSC error code.
+           'err': int # Network specific error code or an SMSC error code.
            'text': str # The first 20 characters of the short message.
        }
-   
+
+   The ``err`` parameter should be 0 if no error occured.
+
    The ``stat`` parameter should have one the following values:
 
    * ``DELIVRD`` - Message is delivered to destination.
@@ -181,10 +202,13 @@ ____________________________
             # Save data to database
 
         async def sending(self, smpp_message: SmppMessage, pdu: bytes, client_id: str) -> None:
-            pass # Or trace log
+            # Called for every sent message, includion individual segments of a segmented SubmitSM
+            pass  # Or trace log
 
         async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
                            client_id: str) -> None:
+            # If SubmitSm was segmented, this will be only called once, after all segments
+            # are processed. This applies both to SubmitSmResp and delivery receipt.
             if isinstance(smpp_message, GenericNack):
                 await self._save_result('Sending failed', smpp_message)
                 # Requeue if desired
@@ -199,20 +223,21 @@ ____________________________
                     # This is a delivery receipt
                     receipt: Dict[str, Any] = smpp_message.parse_receipt()
                     final_status: str = receipt.get('stat', '')
+                    msg: str
                     if final_status == 'DELIVRD':
-                        msg: str = 'Delivered to handset'
+                        msg = 'Delivered to handset'
                     elif final_status == 'EXPIRED':
-                        msg: str = 'Message expired'
+                        msg = 'Message expired'
                     elif final_status == 'DELETED':
-                        msg: str = 'Message deleted by SC'
+                        msg = 'Message deleted by SC'
                     elif final_status == 'UNDELIV':
-                        msg: str = 'Message undeliverable'
+                        msg = 'Message undeliverable'
                     elif final_status == 'ACCEPTD':
-                        msg: str = 'Message accepted'
+                        msg = 'Message accepted'
                     elif final_status == 'REJECTD':
-                        msg: str = 'Message rejected'
+                        msg = 'Message rejected'
                     else:
-                        msg: str = 'Unknown status'
+                        msg = 'Unknown status'
                     await self._save_result(msg, smpp_message)
                 else:
                     pass

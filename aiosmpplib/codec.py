@@ -1,4 +1,4 @@
-from codecs import (Codec, CodecInfo, lookup, utf_16_be_decode, utf_16_be_encode)
+from codecs import Codec, CodecInfo, lookup, utf_16_be_decode, utf_16_be_encode
 from abc import abstractmethod
 from struct import pack
 from typing import Dict, List, Optional, Tuple
@@ -189,7 +189,7 @@ class SmsCodec(Codec):
     @classmethod
     def get_codec_info(cls) -> CodecInfo:
         codec: Codec = cls()
-        return CodecInfo(name=cls.get_name(), encode=codec.encode, decode=codec.decode)
+        return CodecInfo(name=cls.get_name(), encode=codec.encode, decode=codec.decode)  # type: ignore
 
 
 class GSM7BitCodec(SmsCodec):
@@ -306,7 +306,7 @@ class GSM7BitPackedCodec(GSM7BitCodec):
 
     @classmethod
     def get_name(cls) -> str:
-        return 'gsm0338-packed'
+        return 'gsm0338_packed'
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
     def encode(self, input: str, errors: str='strict') -> Tuple[bytes, int]:
