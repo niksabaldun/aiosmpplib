@@ -39,9 +39,11 @@ from .state import (
     COMMAND_RESPONSE_MAP,
     RESPONSE_COMMAND_MAP,
     NPI,
+    SAR_MSG_REF_NUM,
+    SAR_SEGMENT_SEQNUM,
+    SAR_TOTAL_SEGMENTS,
     TON,
     OptionalParam,
-    OptionalTag,
     PduHeader,
     BindMode,
     SmppCommand,
@@ -477,13 +479,13 @@ class ESME:
                                 new_message.set_encoded_message(part)
                                 assert new_message.optional_params is not None
                                 new_message.optional_params.append(
-                                    OptionalParam(OptionalTag.SAR_MSG_REF_NUM, ref_num)
+                                    OptionalParam(SAR_MSG_REF_NUM, ref_num)
                                 )
                                 new_message.optional_params.append(
-                                    OptionalParam(OptionalTag.SAR_SEGMENT_SEQNUM, index + 1)
+                                    OptionalParam(SAR_SEGMENT_SEQNUM, index + 1)
                                 )
                                 new_message.optional_params.append(
-                                    OptionalParam(OptionalTag.SAR_TOTAL_SEGMENTS, parts_count)
+                                    OptionalParam(SAR_TOTAL_SEGMENTS, parts_count)
                                 )
                                 messages_to_send.append(new_message)
                 try:
@@ -546,6 +548,8 @@ class ESME:
                 else:
                     pdu_handler = self._handle_response
                 smpp_message: Optional[SmppMessage] = await pdu_handler(pdu, header)
+                if not smpp_message:
+                    continue  # An error occured
 
                 if smpp_message is not _SUBMIT_SM_SEGMENT:
                     self._logger.debug('Calling user hook', hook_method='received')
@@ -622,10 +626,10 @@ class ESME:
             sequence_num=header.sequence_num,
         )
 
-        original_command: Optional[SmppCommand] = RESPONSE_COMMAND_MAP[header.smpp_command]
-        original_message: Optional[SmppMessage] = await self.correlator.get(
-            original_command, smpp_message
-        )
+        original_command: Optional[SmppCommand] = None
+        if header.smpp_command != SmppCommand.GENERIC_NACK:
+            original_command = RESPONSE_COMMAND_MAP[header.smpp_command]
+        original_message: Optional[SmppMessage] = await self.correlator.get(smpp_message)
         if not original_message:
             # This should not happen
             self._logger.error(
@@ -634,10 +638,7 @@ class ESME:
                 command_status=header.command_status.name,
                 sequence_num=header.sequence_num,
             )
-        elif (
-            header.smpp_command != SmppCommand.GENERIC_NACK
-            and original_message.smpp_command != original_command
-        ):
+        elif original_command and original_message.smpp_command != original_command:
             # This should DEFINITELY not happen
             if self._logger.isEnabledFor(ERROR):
                 self._logger.error(

@@ -3,11 +3,58 @@ from typing import Any, Dict, List, Tuple
 import pytest
 from aiosmpplib.protocol import DEFAULT_ENCODING, SMPP_VERSION_3_4
 from aiosmpplib import json_decode, json_encode
-from aiosmpplib import PhoneNumber, TON, NPI, OptionalParam, OptionalTag
+from aiosmpplib import PhoneNumber, TON, NPI, OptionalParam
 from aiosmpplib import (SubmitSm, SubmitSmResp, DeliverSm, DeliverSmResp, Unbind, UnbindResp,
                         BindTransceiver, BindTransceiverResp, BindReceiver, BindReceiverResp,
                         BindTransmitter, BindTransmitterResp, EnquireLink, EnquireLinkResp,
                         SmppMessage, PduHeader, GenericNack)
+from aiosmpplib.state import (
+    DEST_ADDR_SUBUNIT,
+    DEST_NETWORK_TYPE,
+    DEST_BEARER_TYPE,
+    DEST_TELEMATICS_ID,
+    SOURCE_ADDR_SUBUNIT,
+    SOURCE_NETWORK_TYPE,
+    SOURCE_BEARER_TYPE,
+    SOURCE_TELEMATICS_ID,
+    QOS_TIME_TO_LIVE,
+    PAYLOAD_TYPE,
+    ADDITIONAL_STATUS_INFO_TEXT,
+    RECEIPTED_MESSAGE_ID,
+    MS_MSG_WAIT_FACILITIES,
+    PRIVACY_INDICATOR,
+    SOURCE_SUBADDRESS,
+    DEST_SUBADDRESS,
+    USER_MESSAGE_REFERENCE,
+    USER_RESPONSE_CODE,
+    SOURCE_PORT,
+    DESTINATION_PORT,
+    SAR_MSG_REF_NUM,
+    LANGUAGE_INDICATOR,
+    SAR_TOTAL_SEGMENTS,
+    SAR_SEGMENT_SEQNUM,
+    SC_INTERFACE_VERSION,
+    CALLBACK_NUM_PRES_IND,
+    CALLBACK_NUM_ATAG,
+    NUMBER_OF_MESSAGES,
+    CALLBACK_NUM,
+    DPF_RESULT,
+    SET_DPF,
+    MS_AVAILABILITY_STATUS,
+    NETWORK_ERROR_CODE,
+    MESSAGE_PAYLOAD,
+    DELIVERY_FAILURE_REASON,
+    MORE_MESSAGES_TO_SEND,
+    MESSAGE_STATE,
+    USSD_SERVICE_OP,
+    DISPLAY_TIME,
+    SMS_SIGNAL,
+    MS_VALIDITY,
+    ALERT_ON_MESSAGE_DELIVERY,
+    ITS_REPLY_TYPE,
+    ITS_SESSION_INFO,
+    tag_data_type,
+)
 
 
 BIND_TRANSCEIVER = BindTransceiver(
@@ -47,9 +94,9 @@ SUBMIT_SM_WITH_OPT_PARAMS: SubmitSm = SubmitSm(
     source=PhoneNumber('INFO', TON.ALPHANUMERIC),
     destination=PhoneNumber('+123135654618'),
     optional_params=[
-        OptionalParam(OptionalTag.ALERT_ON_MESSAGE_DELIVERY, True),
-        OptionalParam(OptionalTag.DEST_SUBADDRESS, '555'),
-        OptionalParam(OptionalTag.DEST_NETWORK_TYPE, 1),
+        OptionalParam(ALERT_ON_MESSAGE_DELIVERY, True),
+        OptionalParam(DEST_SUBADDRESS, '555'),
+        OptionalParam(DEST_NETWORK_TYPE, 1),
     ],
     sequence_num=1,
 )
@@ -78,7 +125,52 @@ TEST_MESSAGES: List[Tuple[str, SmppMessage]] = [
     ('UnbindResp', UnbindResp(1)),
     ('GenericNack', GenericNack(1)),
 ]
-
+STANDARD_TAGS: Tuple[int, ...] = (
+    DEST_ADDR_SUBUNIT,
+    DEST_NETWORK_TYPE,
+    DEST_BEARER_TYPE,
+    DEST_TELEMATICS_ID,
+    SOURCE_ADDR_SUBUNIT,
+    SOURCE_NETWORK_TYPE,
+    SOURCE_BEARER_TYPE,
+    SOURCE_TELEMATICS_ID,
+    QOS_TIME_TO_LIVE,
+    PAYLOAD_TYPE,
+    ADDITIONAL_STATUS_INFO_TEXT,
+    RECEIPTED_MESSAGE_ID,
+    MS_MSG_WAIT_FACILITIES,
+    PRIVACY_INDICATOR,
+    SOURCE_SUBADDRESS,
+    DEST_SUBADDRESS,
+    USER_MESSAGE_REFERENCE,
+    USER_RESPONSE_CODE,
+    SOURCE_PORT,
+    DESTINATION_PORT,
+    SAR_MSG_REF_NUM,
+    LANGUAGE_INDICATOR,
+    SAR_TOTAL_SEGMENTS,
+    SAR_SEGMENT_SEQNUM,
+    SC_INTERFACE_VERSION,
+    CALLBACK_NUM_PRES_IND,
+    CALLBACK_NUM_ATAG,
+    NUMBER_OF_MESSAGES,
+    CALLBACK_NUM,
+    DPF_RESULT,
+    SET_DPF,
+    MS_AVAILABILITY_STATUS,
+    NETWORK_ERROR_CODE,
+    MESSAGE_PAYLOAD,
+    DELIVERY_FAILURE_REASON,
+    MORE_MESSAGES_TO_SEND,
+    MESSAGE_STATE,
+    USSD_SERVICE_OP,
+    DISPLAY_TIME,
+    SMS_SIGNAL,
+    MS_VALIDITY,
+    ALERT_ON_MESSAGE_DELIVERY,
+    ITS_REPLY_TYPE,
+    ITS_SESSION_INFO,
+)
 
 @pytest.mark.parametrize('desc,message', TEST_MESSAGES)
 def test_pdu_serialization(desc: str, message: SmppMessage):
@@ -166,17 +258,17 @@ def test_bad_args(param: str):
         DeliverSm(**_all_args)
 
 
-@pytest.mark.parametrize('tag', OptionalTag.__members__.values())
-def test_optional_param(tag: OptionalTag):
+@pytest.mark.parametrize('tag', STANDARD_TAGS)
+def test_optional_param(tag: int):
     with pytest.raises(ValueError):
         OptionalParam(BadArg(), '') # type: ignore
 
     with pytest.raises(ValueError):
         OptionalParam(tag, BadArg()) # type: ignore
 
-    if tag == OptionalTag.MESSAGE_PAYLOAD:
+    if tag == MESSAGE_PAYLOAD:
         # MESSAGE_PAYLOAD param should not be instantiable, it is handled separately
         with pytest.raises(ValueError):
-            OptionalParam(tag, tag.data_type())
+            OptionalParam(tag, tag_data_type(tag)())
     else:
-        assert OptionalParam(tag, tag.data_type()) is not None
+        assert OptionalParam(tag, tag_data_type(tag)()) is not None

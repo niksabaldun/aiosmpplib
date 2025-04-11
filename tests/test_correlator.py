@@ -103,9 +103,7 @@ async def test_fragmented_submit():
         header = SmppMessage.parse_header(pdu)
         submit_sm_resp: SmppMessage = SubmitSmResp.from_pdu(pdu, header, DEFAULT_ENCODING)
         assert isinstance(submit_sm_resp, SubmitSmResp)
-        original_message: Optional[SmppMessage] = await correlator.get(
-            SmppCommand.SUBMIT_SM, submit_sm_resp
-        )
+        original_message: Optional[SmppMessage] = await correlator.get(submit_sm_resp)
         assert original_message is submit_sms[index]
         await correlator.put_delivery(submit_sm_resp.message_id, submit_sms[index])
         segment_status, status_code = await correlator.get_segmented(submit_sm_resp.sequence_num)
@@ -153,9 +151,7 @@ async def test_failed_fragmented_submit():
         message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
         response: SmppMessage = message_class.from_pdu(pdu, header)
         assert isinstance(response, (SubmitSmResp, GenericNack))
-        original_message: Optional[SmppMessage] = await correlator.get(
-            SmppCommand.SUBMIT_SM, response
-        )
+        original_message: Optional[SmppMessage] = await correlator.get(response)
         assert original_message is submit_sms[index]
         if isinstance(response, SubmitSmResp):
             await correlator.put_delivery(response.message_id, submit_sms[index])

@@ -206,12 +206,11 @@ class AbstractCorrelator(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def get(self, smpp_command: SmppCommand, response: SmppMessage) -> Optional[SmppMessage]:
+    async def get(self, response: SmppMessage) -> Optional[SmppMessage]:
         '''
         Called to get the correlation between a SMPP sequence number and sent message.
 
         Parameters:
-            smpp_command: Any one of the SMSC commands eg submit_sm
             response: SMPP response containing SMPP sequence_num
 
         Returns:
@@ -403,7 +402,7 @@ class SimpleCorrelator(AbstractCorrelator):
         await self._remove_expired()
         return None
 
-    async def get(self, smpp_command: SmppCommand, response: SmppMessage) -> Optional[SmppMessage]:
+    async def get(self, response: SmppMessage) -> Optional[SmppMessage]:
         sequence_key: str = str(response.sequence_num)
         item: Optional[Tuple[float, SmppMessage]] = self._store.pop(sequence_key, None)
         smpp_message: Optional[SmppMessage] = None

@@ -8,15 +8,21 @@ from struct import pack, unpack_from
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 from .codec import find_codec_info
 from .state import (
+    MESSAGE_PAYLOAD,
     NPI,
+    RECEIPTED_MESSAGE_ID,
+    SAR_MSG_REF_NUM,
+    SAR_SEGMENT_SEQNUM,
+    SAR_TOTAL_SEGMENTS,
+    SC_INTERFACE_VERSION,
     TON,
     OptionalParam,
-    OptionalTag,
     PhoneNumber,
     SmppCommand,
     SmppCommandStatus,
     SmppDataCoding,
     PduHeader,
+    tag_data_type,
 )
 from .utils import IE_ID_16BIT, check_param, FixedOffset
 
@@ -226,9 +232,9 @@ class SubmitSm(Trackable, SmppMessage):
         for opt_param in self.optional_params:
             if not isinstance(opt_param, OptionalParam):
                 raise ValueError('`optional_params` should be a list of OptionalParam objects')
-            if opt_param.tag == OptionalTag.MESSAGE_PAYLOAD:
+            if opt_param.tag == MESSAGE_PAYLOAD:
                 raise ValueError(
-                    '`OptionalTag.MESSAGE_PAYLOAD` cannot be included in '
+                    'Optional tag MESSAGE_PAYLOAD cannot be included in '
                     '`optional_params`. Use `message_payload` parameter instead.'
                 )
 
@@ -382,7 +388,7 @@ class SubmitSm(Trackable, SmppMessage):
                 # but automatic moving to message_payload was deactivated
                 raise ValueError(f'Message is too long ({sm_length} bytes, maximum is 254)')
             if sm_length > 254 or self.message_payload:
-                tag: int = OptionalTag.MESSAGE_PAYLOAD.value
+                tag: int = MESSAGE_PAYLOAD
                 encoded_message_payload = pack('!HH', tag, sm_length) + self._encoded_message
                 self._encoded_message = b''
                 sm_length = 0
@@ -396,11 +402,7 @@ class SubmitSm(Trackable, SmppMessage):
                 opt_param.tlv
                 for opt_param in self.optional_params or []
                 if opt_param.tag
-                not in (
-                    OptionalTag.SAR_MSG_REF_NUM,
-                    OptionalTag.SAR_TOTAL_SEGMENTS,
-                    OptionalTag.SAR_SEGMENT_SEQNUM,
-                )
+                not in (SAR_MSG_REF_NUM, SAR_TOTAL_SEGMENTS, SAR_SEGMENT_SEQNUM)
             )
         else:
             optional_params = b''.join(opt_param.tlv for opt_param in self.optional_params or [])
@@ -454,11 +456,7 @@ class SubmitSm(Trackable, SmppMessage):
 
     def is_segmented(self) -> bool:
         for opt_param in self.optional_params or []:
-            if opt_param.tag in (
-                OptionalTag.SAR_MSG_REF_NUM,
-                OptionalTag.SAR_SEGMENT_SEQNUM,
-                OptionalTag.SAR_TOTAL_SEGMENTS,
-            ):
+            if opt_param.tag in (SAR_MSG_REF_NUM, SAR_SEGMENT_SEQNUM, SAR_TOTAL_SEGMENTS):
                 return True
         return False
 
@@ -467,11 +465,11 @@ class SubmitSm(Trackable, SmppMessage):
         seq_num: int = 0
         total_segments: int = 0
         for opt_param in self.optional_params or []:
-            if opt_param.tag == OptionalTag.SAR_MSG_REF_NUM:
+            if opt_param.tag == SAR_MSG_REF_NUM:
                 ref_num = opt_param.value  # type: ignore ; must be int
-            elif opt_param.tag == OptionalTag.SAR_SEGMENT_SEQNUM:
+            elif opt_param.tag == SAR_SEGMENT_SEQNUM:
                 seq_num = opt_param.value  # type: ignore ; must be int
-            elif opt_param.tag == OptionalTag.SAR_TOTAL_SEGMENTS:
+            elif opt_param.tag == SAR_TOTAL_SEGMENTS:
                 total_segments = opt_param.value  # type: ignore ; must be int
         return ref_num, seq_num, total_segments
 
@@ -531,9 +529,9 @@ class SubmitSm(Trackable, SmppMessage):
                 total = unpack_from('!B', raw_message, ind)[0]
                 seq_num = unpack_from('!B', raw_message, ind + 1)[0]
                 ind = udh_len + 1
-                optional_params.append(OptionalParam(OptionalTag.SAR_MSG_REF_NUM, ref_num))
-                optional_params.append(OptionalParam(OptionalTag.SAR_SEGMENT_SEQNUM, seq_num))
-                optional_params.append(OptionalParam(OptionalTag.SAR_TOTAL_SEGMENTS, total))
+                optional_params.append(OptionalParam(SAR_MSG_REF_NUM, ref_num))
+                optional_params.append(OptionalParam(SAR_SEGMENT_SEQNUM, seq_num))
+                optional_params.append(OptionalParam(SAR_TOTAL_SEGMENTS, total))
             return codec_info.decode(raw_message[ind:])[0]
 
         optional_params: List[OptionalParam] = []
@@ -571,16 +569,17 @@ class SubmitSm(Trackable, SmppMessage):
         message_payload: str = ''
         # Read optional parameters, if any
         while index < header.pdu_length:
-            tag: OptionalTag = OptionalTag(get_integer(2))
+            tag: int = get_integer(2)
             length: int = get_integer(2)
-            if tag == OptionalTag.MESSAGE_PAYLOAD:
+            tag_type: Type = tag_data_type(tag)
+            if tag == MESSAGE_PAYLOAD:
                 # message_payload is a special case, it is an alternative to short_message
                 message_payload = decode_message(pdu[index : index + length])
                 index += length
-            elif tag.data_type == int:
+            elif tag_type == int:
                 int_value: int = get_integer(length)
                 optional_params.append(OptionalParam(tag, int_value))
-            elif tag.data_type == bool:
+            elif tag_type == bool:
                 # alert_on_message_delivery doesn't have an actual value (it is zero-length),
                 # but is a bool param, so we set it to True
                 optional_params.append(OptionalParam(tag, True))
@@ -636,7 +635,7 @@ class SubmitSm(Trackable, SmppMessage):
             optional_params: List[OptionalParam] = []
         else:
             optional_params: List[OptionalParam] = [
-                OptionalParam(OptionalTag(param_dict['tag']), param_dict['value'])
+                OptionalParam(param_dict['tag'], param_dict['value'])
                 for param_dict in json_object['optional_params']
             ]
 
@@ -782,7 +781,7 @@ class DeliverSm(SubmitSm):
                 (
                     param
                     for param in self.optional_params
-                    if param.tag == OptionalTag.RECEIPTED_MESSAGE_ID
+                    if param.tag == RECEIPTED_MESSAGE_ID
                 ),
                 None,
             )
@@ -972,7 +971,7 @@ class BindTransceiverResp(SmppMessage):
     def pdu(self) -> bytes:
         body: bytes = self.system_id.encode('ascii') + NULL
         if self.sc_interface_version is not None:
-            body += OptionalParam(OptionalTag.SC_INTERFACE_VERSION, self.sc_interface_version).tlv
+            body += OptionalParam(SC_INTERFACE_VERSION, self.sc_interface_version).tlv
         return self.pack_header(PDU_HEADER_LENGTH + len(body)) + body
 
     @classmethod
