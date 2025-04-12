@@ -548,12 +548,16 @@ class ESME:
                 else:
                     pdu_handler = self._handle_response
                 smpp_message: Optional[SmppMessage] = await pdu_handler(pdu, header)
+
+                self._logger.debug('Calling user hook', hook_method='received')
+                if smpp_message is not _SUBMIT_SM_SEGMENT:
+                    await self.hook.received(smpp_message, pdu, self.client_id)
+                else:
+                    # This is a segment of a multi-part message, just send a PDU for logging
+                    await self.hook.received(None, pdu, self.client_id)
+ 
                 if not smpp_message:
                     continue  # An error occured
-
-                if smpp_message is not _SUBMIT_SM_SEGMENT:
-                    self._logger.debug('Calling user hook', hook_method='received')
-                    await self.hook.received(smpp_message, pdu, self.client_id)
 
                 if header.smpp_command in COMMAND_RESPONSE_MAP:
                     # This is a request, we need to respond
@@ -866,7 +870,7 @@ class ESME:
 
     async def connect(self) -> None:
         '''
-        Open connection to SMSC and bind as a transceiver.
+        Open connection to SMSC and bind as a selected agent (transmitter, receiver, transceiver).
         '''
         if self._session_state == self.bind_mode.session_state:
             return
@@ -891,18 +895,22 @@ class ESME:
             address_range=self.address_range,
         )
         await self._socket_operation(self._send_data(bind_request))
-        # Wait for response. Comment from original library developer stated that sometimes
-        # the SMSC does not send the response. However, that would imply SMSC bug and
-        # this behavior will not be taken into account until confirmed.
+        # Wait for response until timeout.
         pdu: bytes
         header: PduHeader
         pdu, header = await self._socket_operation(self._get_pdu())
         expected_response_command: SmppCommand = COMMAND_RESPONSE_MAP[bind_command]
+        self._logger.debug('Calling user hook', hook_method='received')
         if header.smpp_command != expected_response_command:
+            await self.hook.received(None, pdu, self.client_id)  # Send for logging
             raise SmppError(header.smpp_command, header.command_status)
         bind_response_cls: Type[SmppMessage] = MESSAGE_TYPE_MAP[expected_response_command]
-        self._logger.debug('Calling user hook', hook_method='received')
-        await self.hook.received(bind_response_cls.from_pdu(pdu, header), pdu, self.client_id)
+        try:
+            bind_response: SmppMessage = bind_response_cls.from_pdu(pdu, header)
+        except Exception:  # pylint: disable=broad-except
+            await self.hook.received(None, pdu, self.client_id) # Send for logging
+            raise
+        await self.hook.received(bind_response, pdu, self.client_id)
         # ESME_RALYBND means that we are already bound.
         # This should not happen, but we cover it just in case.
         if header.command_status not in (
@@ -966,7 +974,8 @@ class ESME:
 
                 self._bound.clear()
                 self._session_state = SmppSessionState.CLOSED
-                self._logger.error(error_message, exception=repr(conn_error))
+                if conn_error:
+                    self._logger.error(error_message, exception=repr(conn_error))
                 if self._is_shutting_down:
                     break
                 if conn_error and self._logger.isEnabledFor(INFO):

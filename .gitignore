@@ -5,3 +5,4 @@ aiosmpplib.code-workspace
 upload_to_pypi
 .vscode/settings.json
 Makefile
+dist
