@@ -1,6 +1,15 @@
+from contextlib import suppress
+from shutil import rmtree
+
 import pytest
 
-from aiosmpplib.correlator import STATUS_FAILED, STATUS_SENDING, STATUS_SENT, SimpleCorrelator
+from aiosmpplib.correlator import (
+    STATUS_FAILED,
+    STATUS_SENDING,
+    STATUS_SENT,
+    SegmentStatus,
+    SimpleCorrelator,
+)
 from aiosmpplib.protocol import (
     DEFAULT_ENCODING,
     MESSAGE_TYPE_MAP,
@@ -185,3 +194,43 @@ async def test_fragmented_delivery():
                 '😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰'
                 '😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰😇🥶🥰'
             )
+
+
+@pytest.mark.asyncio
+async def test_correlator_persistence():
+    directory: str = '/tmp/.test_correlator'
+    with suppress(FileNotFoundError):
+        rmtree(directory)
+    correlator: SimpleCorrelator = SimpleCorrelator('test', directory)
+    # Convert DELIVER_SM to SUBMIT_SM
+    pdu: bytes = bytes.fromhex(FRAGMENTED_SM[0].replace('00000005', '00000004'))
+    header: PduHeader = SmppMessage.parse_header(pdu)
+    submit_sm: SmppMessage = SubmitSm.from_pdu(pdu, header, DEFAULT_ENCODING)
+    assert isinstance(submit_sm, SubmitSm)
+
+    pdu = bytes.fromhex(FRAGMENTED_SM_RESP[0])
+    header = SmppMessage.parse_header(pdu)
+    submit_sm_resp: SmppMessage = SubmitSmResp.from_pdu(pdu, header, DEFAULT_ENCODING)
+    assert isinstance(submit_sm_resp, SubmitSmResp)
+
+    pdu = bytes.fromhex(FRAGMENTED_REPORTS[0])
+    header = SmppMessage.parse_header(pdu)
+    deliver_sm: SmppMessage = DeliverSm.from_pdu(pdu, header, DEFAULT_ENCODING)
+    assert isinstance(deliver_sm, DeliverSm)
+    assert deliver_sm.is_receipt()
+
+    segment_status: SegmentStatus = SegmentStatus({'a': 1}, submit_sm, submit_sm_resp, deliver_sm)
+
+    correlator._store['test1'] = (0.1, submit_sm,)
+    correlator._segment_store['test2'] = (1, 2,)
+    correlator._segment_status_store['test3'] = segment_status
+    correlator._delivery_store['test4'] = (0.2, submit_sm)
+    correlator._delivery_segment_store['test5'] = (3.2, {'a': 'b'},)
+
+    # New correlator should read the data from file
+    new_correlator: SimpleCorrelator = SimpleCorrelator('test', directory)
+    assert new_correlator._store['test1'] == (0.1, submit_sm,)
+    assert new_correlator._segment_store['test2'] == [1, 2]  # Tuples converted to lists
+    assert new_correlator._segment_status_store['test3'] == segment_status
+    assert new_correlator._delivery_store['test4'] == (0.2, submit_sm)
+    assert new_correlator._delivery_segment_store['test5'] == [3.2, {'a': 'b'}]

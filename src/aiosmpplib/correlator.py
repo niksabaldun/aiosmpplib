@@ -23,7 +23,7 @@ _T = TypeVar('_T')
 VT = TypeVar('VT')
 
 
-@dataclass(slots=True)
+@dataclass
 class SegmentStatus:
     status: dict[str, int]  # Status of individual segments (seq_num: status_code)
     orig_submit_sm: SubmitSm  # Original SubmitSm that is being segmented
@@ -49,7 +49,7 @@ class PersistingDict(MutableMapping[str, VT]):
                         if converter:
                             self._data = {key: converter(value) for key, value in data.items()}
                         else:
-                            self._data = data
+                            self._data = data  # Tuples will be converted to lists, but that's fine
             except Exception:
                 pass
 
@@ -274,6 +274,8 @@ class SimpleCorrelator(AbstractCorrelator):
             )
         self.max_ttl_response: float = max_ttl_response
         self.max_ttl_delivery: float = max_ttl_delivery
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         # Dict keys are string for easier serialization
         self._store: PersistingDict[tuple[float, SmppMessage]] = PersistingDict(
             directory, name + '_store.json', self._to_message_tuple
@@ -291,6 +293,9 @@ class SimpleCorrelator(AbstractCorrelator):
             directory, name + '_delivery_segment_store.json'
         )  # ref_num: (stored_at, {seq_num: segment_text})
 
+    def _to_tuple(self, obj: object) -> tuple[float, SubmitSm]:
+        return cast(tuple[float, SubmitSm], self._to_message_tuple(obj))
+
     def _to_message_tuple(self, obj: object) -> tuple[float, SmppMessage]:
         obj = cast(tuple[float, AnyDict], obj)
         msg: SmppMessage = dict_to_smpp_message(obj[1])
@@ -301,7 +306,18 @@ class SimpleCorrelator(AbstractCorrelator):
 
     def _to_segment_status(self, obj: object) -> SegmentStatus:
         obj = cast(AnyDict, obj)
-        return SegmentStatus(**obj)  # type: ignore[arg-type]  # Data is assumed to be compatible
+        status: dict[str, int] = cast(dict[str, int], obj['status'])
+        orig_submit_sm_dict: AnyDict = cast(AnyDict, obj['orig_submit_sm'])
+        last_response_dict: AnyDict | None = cast(AnyDict | None, obj.get('last_response'))
+        last_receipt_dict: AnyDict | None = cast(AnyDict | None, obj.get('last_receipt'))
+        orig_submit_sm: SubmitSm = cast(SubmitSm, dict_to_smpp_message(orig_submit_sm_dict))
+        last_response: DeliverSm | None = None
+        if last_response_dict:
+            last_response = cast(DeliverSm, dict_to_smpp_message(last_response_dict))
+        last_receipt: DeliverSm | None = None
+        if last_receipt_dict:
+            last_receipt = cast(DeliverSm, dict_to_smpp_message(last_receipt_dict))
+        return SegmentStatus(status, orig_submit_sm, last_response, last_receipt)
 
     def get_cumulated_status(self, ref_num: int) -> int:
         ref_key: str = str(ref_num)

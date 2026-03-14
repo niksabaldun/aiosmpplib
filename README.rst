@@ -116,7 +116,7 @@ _____________________
 Receiving messages is straightforward. The ``received`` hook will be called. If the
 ``smpp_message`` parameter is of type **DeliverSm** and its ``is_receipt`` method returns ``False``,
 it is an incoming SMS. Store it as appropriate. If the message was segmented, segments will be
-reassembled ba the correlator, and  ``received`` hook called for the complete message only.
+reassembled by the correlator, and  ``received`` hook called for the complete message only.
 
 Outgoing message flow
 _____________________
@@ -134,7 +134,7 @@ Sending messages is a lot more involved.
    * If ``auto_message_payload`` parameter is False and seventh bit in ``esm_class`` parameter is
      not set, the message will be segmented using SAR (Segmentation And Reassembly) method.
 
-    Segmentation is transparent. Hooks will not be called for individual segmentsm but for
+    Segmentation is transparent. Hooks will not be called for individual segments, but for
     the complete message only.
 
 1. Enqueue the message in broker.
