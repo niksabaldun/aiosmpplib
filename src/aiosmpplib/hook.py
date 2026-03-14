@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+
 from .log import TRACE, StructuredLogger
 from .protocol import SmppMessage
 from .utils import check_param
@@ -28,7 +28,7 @@ class AbstractHook(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
+    async def received(self, smpp_message: SmppMessage | None, pdu: bytes,
                        client_id: str) -> None:
         '''
         Called after receiving data from SMPP peer.
@@ -70,7 +70,7 @@ class SimpleHook(AbstractHook):
         if self.logger.isEnabledFor(TRACE):
             self.logger.trace(TRACE, 'Sending message', pdu=pdu.hex())
 
-    async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
+    async def received(self, smpp_message: SmppMessage | None, pdu: bytes,
                        client_id: str) -> None:
         if self.logger.isEnabledFor(TRACE):
             self.logger.trace('Received message', pdu=pdu.hex())

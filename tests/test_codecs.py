@@ -1,11 +1,11 @@
 from codecs import CodecInfo
-from typing import List, Tuple
+
 import pytest
+
 from aiosmpplib import SmppDataCoding
 from aiosmpplib.codec import find_codec_info
 
-
-SMPP_ENCODINGS: List[str] = [coding for coding in SmppDataCoding.__members__
+SMPP_ENCODINGS: list[str] = [coding for coding in SmppDataCoding.__members__
                              if not coding.startswith('octet_unspecified')]
 
 
@@ -34,7 +34,7 @@ def test_bad_arg(encoding: str):
 
 
 TEST_STRING: str = 'Hülk'
-TEST_DATA: List[Tuple[str, bytes]] = [
+TEST_DATA: list[tuple[str, bytes]] = [
     ('utf-8', b'H\xc3\xbclk'),
     ('utf-16be', b'\x00H\x00\xfc\x00l\x00k'),
     ('ucs2', b'\x00H\x00\xfc\x00l\x00k'),

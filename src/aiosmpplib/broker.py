@@ -1,8 +1,8 @@
 import asyncio
 from abc import ABC, abstractmethod
 
-from .utils import check_param
 from .protocol import SmppMessage
+from .utils import check_param
 
 
 class AbstractBroker(ABC):

@@ -1,6 +1,5 @@
 import pytest
-from typing import List, Optional, Type
-from aiosmpplib.state import PduHeader, SmppCommand
+
 from aiosmpplib.correlator import STATUS_FAILED, STATUS_SENDING, STATUS_SENT, SimpleCorrelator
 from aiosmpplib.protocol import (
     DEFAULT_ENCODING,
@@ -11,9 +10,9 @@ from aiosmpplib.protocol import (
     SubmitSm,
     SubmitSmResp,
 )
+from aiosmpplib.state import PduHeader
 
-
-FRAGMENTED_SM: List[str] = [
+FRAGMENTED_SM: list[str] = [
     ('000000ce00000005000000000000000b000000494e464f0000002B3338353939393939393939390040000000'
         '3234313132313039343035313230342b00010008008c050003350601006a0061006b006f0020006a0061006b'
         '006f0020006a0061006b006f0020006a0061006b006f0020006a0061006b006f0020006a0061006b006f0020'
@@ -42,7 +41,7 @@ FRAGMENTED_SM: List[str] = [
     ('00000054000000050000000000000010000000494e464f0000002B3338353939393939393939390040000000'
         '3234313132313039343035313230342b000100080012050003350606d83dde07d83edd76d83edd70'),
 ]
-FRAGMENTED_SM_RESP: List[str] = [
+FRAGMENTED_SM_RESP: list[str] = [
     ('0000001b80000004000000000000000b4237464530303034303000'),
     ('0000001980000004000000000000000c353833423030303300'),
     ('0000001980000004000000000000000d374235343030303100'),
@@ -50,7 +49,7 @@ FRAGMENTED_SM_RESP: List[str] = [
     ('0000001980000004000000000000000f364631413030303200'),
     ('00000019800000040000000000000010413441373030303500'),
 ]
-FAILED_FRAGMENTED_SM_RESP: List[str] = [
+FAILED_FRAGMENTED_SM_RESP: list[str] = [
     ('0000001b80000004000000000000000b4237464530303034303000'),
     ('0000001980000004000000000000000c353833423030303300'),
     ('0000001980000004000000000000000d374235343030303100'),
@@ -58,7 +57,7 @@ FAILED_FRAGMENTED_SM_RESP: List[str] = [
     ('0000001980000004000000000000000f364631413030303200'),
     ('00000019800000040000000000000010413441373030303500'),
 ]
-FRAGMENTED_REPORTS: List[str] = [
+FRAGMENTED_REPORTS: list[str] = [
     ('00000096000000050000000000ADD937000000333835393939393939393939000000494E464F000400030000000'
      '000006869643A42374645303030343030207375623A30303120646C7672643A303031207375626D697420646174'
      '653A3234313031313134353620646F6E6520646174653A3234313031313134353620737461743a44454c4956524'
@@ -89,7 +88,7 @@ FRAGMENTED_REPORTS: List[str] = [
 async def test_fragmented_submit():
     correlator: SimpleCorrelator = SimpleCorrelator('test')
     segment_count: int = len(FRAGMENTED_SM)
-    submit_sms: List[SubmitSm] = []
+    submit_sms: list[SubmitSm] = []
     for index in range(segment_count):
         # Convert DELIVER_SM to SUBMIT_SM
         pdu: bytes = bytes.fromhex(FRAGMENTED_SM[index].replace('00000005', '00000004'))
@@ -103,7 +102,7 @@ async def test_fragmented_submit():
         header = SmppMessage.parse_header(pdu)
         submit_sm_resp: SmppMessage = SubmitSmResp.from_pdu(pdu, header, DEFAULT_ENCODING)
         assert isinstance(submit_sm_resp, SubmitSmResp)
-        original_message: Optional[SmppMessage] = await correlator.get(submit_sm_resp)
+        original_message: SmppMessage | None = await correlator.get(submit_sm_resp)
         assert original_message is submit_sms[index]
         await correlator.put_delivery(submit_sm_resp.message_id, submit_sms[index])
         segment_status, status_code = await correlator.get_segmented(submit_sm_resp.sequence_num)
@@ -119,7 +118,7 @@ async def test_fragmented_submit():
         deliver_sm: SmppMessage = DeliverSm.from_pdu(pdu, header, DEFAULT_ENCODING)
         assert isinstance(deliver_sm, DeliverSm)
         assert deliver_sm.is_receipt()
-        orig_message: Optional[SubmitSm] = await correlator.get_delivery(deliver_sm)
+        orig_message: SubmitSm | None = await correlator.get_delivery(deliver_sm)
         assert orig_message is not None
         segment_status, status_code = await correlator.get_segmented(
             orig_message.sequence_num, remove=True
@@ -136,7 +135,7 @@ async def test_fragmented_submit():
 async def test_failed_fragmented_submit():
     correlator: SimpleCorrelator = SimpleCorrelator('test')
     segment_count: int = len(FRAGMENTED_SM)
-    submit_sms: List[SubmitSm] = []
+    submit_sms: list[SubmitSm] = []
     for index in range(segment_count):
         # Convert DELIVER_SM to SUBMIT_SM
         pdu: bytes = bytes.fromhex(FRAGMENTED_SM[index].replace('00000005', '00000004'))
@@ -148,10 +147,10 @@ async def test_failed_fragmented_submit():
     for index in range(segment_count):
         pdu = bytes.fromhex(FAILED_FRAGMENTED_SM_RESP[index])
         header = SmppMessage.parse_header(pdu)
-        message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
+        message_class: type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
         response: SmppMessage = message_class.from_pdu(pdu, header)
         assert isinstance(response, (SubmitSmResp, GenericNack))
-        original_message: Optional[SmppMessage] = await correlator.get(response)
+        original_message: SmppMessage | None = await correlator.get(response)
         assert original_message is submit_sms[index]
         if isinstance(response, SubmitSmResp):
             await correlator.put_delivery(response.message_id, submit_sms[index])
@@ -174,7 +173,7 @@ async def test_fragmented_delivery():
         header: PduHeader = SmppMessage.parse_header(pdu)
         deliver_sm: SmppMessage = DeliverSm.from_pdu(pdu, header, DEFAULT_ENCODING)
         assert isinstance(deliver_sm, DeliverSm)
-        full_deliver_sm: Optional[DeliverSm] = await correlator.put_delivery_segmented(deliver_sm)
+        full_deliver_sm: DeliverSm | None = await correlator.put_delivery_segmented(deliver_sm)
         if index < segment_count - 1:
             assert full_deliver_sm is None
         else:

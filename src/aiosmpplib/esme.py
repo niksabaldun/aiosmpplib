@@ -1,10 +1,13 @@
+import asyncio
 import os
 import random
-import asyncio
-from asyncio import StreamReader, StreamWriter, Task, CancelledError, IncompleteReadError
+from asyncio import CancelledError, IncompleteReadError, StreamReader, StreamWriter, Task
 from codecs import CodecInfo
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from string import ascii_lowercase, digits
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
+from typing import TypeVar, cast
+
 from .broker import AbstractBroker, SimpleBroker
 from .correlator import (
     STATUS_SENDING,
@@ -14,46 +17,45 @@ from .correlator import (
     SimpleCorrelator,
 )
 from .hook import AbstractHook, SimpleHook
-from .log import ERROR, WARNING, INFO, StructuredLogger, Handler
+from .log import ERROR, INFO, WARNING, BasicTypes, Handler, StructuredLogger
 from .protocol import (
     DEFAULT_ENCODING,
     MESSAGE_TYPE_MAP,
     PDU_HEADER_LENGTH,
     SMPP_VERSION_3_4,
-    SmppMessage,
+    BindReceiver,
+    BindTransceiver,
+    BindTransmitter,
+    DeliverSm,
+    EnquireLink,
     GenericNack,
+    SmppMessage,
     SubmitSm,
     SubmitSmResp,
-    DeliverSm,
-    BindReceiver,
-    BindTransmitter,
-    BindTransceiver,
-    EnquireLink,
     Unbind,
 )
 from .ratelimiter import AbstractRateLimiter
 from .retrytimer import AbstractRetryTimer, SimpleExponentialBackoff
 from .sequence import AbstractSequenceGenerator, SimpleSequenceGenerator, assert_valid_sequence
-from .throttle import AbstractThrottleHandler, SimpleThrottleHandler
 from .state import (
     COMMAND_RESPONSE_MAP,
-    RESPONSE_COMMAND_MAP,
     NPI,
+    RESPONSE_COMMAND_MAP,
     SAR_MSG_REF_NUM,
     SAR_SEGMENT_SEQNUM,
     SAR_TOTAL_SEGMENTS,
     TON,
+    BindMode,
     OptionalParam,
     PduHeader,
-    BindMode,
     SmppCommand,
+    SmppCommandStatus,
     SmppDataCoding,
     SmppError,
     SmppSessionState,
-    SmppCommandStatus,
 )
-from .utils import check_param, detect_format, split_sms, split_sms_udh
-
+from .throttle import AbstractThrottleHandler, SimpleThrottleHandler
+from .utils import AnyDict, check_param, detect_format, split_sms, split_sms_udh
 
 T = TypeVar('T')  # For generic type hints
 # Maximum size of inbound network buffer.
@@ -96,21 +98,21 @@ class ESME:
         address_range: str = '',
         bind_mode: BindMode = BindMode.TRANSCEIVER,
         ### NON-SMPP ATTRIBUTES ###
-        client_id: Optional[str] = None,
+        client_id: str | None = None,
         enquire_link_interval: float = 55.00,
-        log_level: Union[str, int] = INFO,
-        log_metadata: Optional[Dict[str, Any]] = None,
-        log_handler: Optional[Handler] = None,
+        log_level: str | int = INFO,
+        log_metadata: dict[str, BasicTypes] | None = None,
+        log_handler: Handler | None = None,
         log_include_timestamp: bool = True,
-        hook: Optional[AbstractHook] = None,
-        broker: Optional[AbstractBroker] = None,
-        rate_limiter: Optional[AbstractRateLimiter] = None,
-        sequence_generator: Optional[AbstractSequenceGenerator] = None,
-        throttle_handler: Optional[AbstractThrottleHandler] = None,
-        correlator: Optional[AbstractCorrelator] = None,
-        retry_timer: Optional[AbstractRetryTimer] = None,
+        hook: AbstractHook | None = None,
+        broker: AbstractBroker | None = None,
+        rate_limiter: AbstractRateLimiter | None = None,
+        sequence_generator: AbstractSequenceGenerator | None = None,
+        throttle_handler: AbstractThrottleHandler | None = None,
+        correlator: AbstractCorrelator | None = None,
+        retry_timer: AbstractRetryTimer | None = None,
         socket_timeout: float = 30.0,
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
         default_encoding: str = DEFAULT_ENCODING,
         testing: bool = False,
     ) -> None:
@@ -217,7 +219,7 @@ class ESME:
         self.client_id: str = client_id or ''.join(random.choices(ascii_lowercase + digits, k=17))
         self.enquire_link_interval: float = enquire_link_interval
         self.default_encoding: str = default_encoding
-        self.custom_codecs: Optional[Dict[str, CodecInfo]] = custom_codecs
+        self.custom_codecs: dict[str, CodecInfo] | None = custom_codecs
         self.testing: bool = testing
         if log_metadata is None:
             log_metadata = {
@@ -231,7 +233,7 @@ class ESME:
         )
         self.hook: AbstractHook = hook or SimpleHook(logger=self._logger)
         self.broker: AbstractBroker = broker or SimpleBroker()
-        self.rate_limiter: Optional[AbstractRateLimiter] = rate_limiter
+        self.rate_limiter: AbstractRateLimiter | None = rate_limiter
         self.sequence_generator: AbstractSequenceGenerator = (
             sequence_generator or SimpleSequenceGenerator()
         )
@@ -246,8 +248,8 @@ class ESME:
         self.interface_version: int = SMPP_VERSION_3_4
         self._ref_seq_generator: AbstractSequenceGenerator = SimpleSequenceGenerator(0, 255)
         self._session_state: SmppSessionState = SmppSessionState.CLOSED
-        self._reader: Optional[StreamReader] = None
-        self._writer: Optional[StreamWriter] = None
+        self._reader: StreamReader | None = None
+        self._writer: StreamWriter | None = None
         self._is_shutting_down: bool = False
         self._drain_lock: asyncio.Lock = asyncio.Lock()
         self._data_received: asyncio.Event = asyncio.Event()
@@ -262,7 +264,7 @@ class ESME:
         self._logger.debug('Ending task', task=task_name)
         try:
             await asyncio.wait_for(task, 0.5)  # Give task a chance to end gracefully
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._cancel_task(task, task_name)
             return
         except (ConnectionError, TimeoutError, IncompleteReadError, OSError, ValueError):
@@ -270,7 +272,7 @@ class ESME:
             pass
         self._logger.debug('Ended task', task=task_name)
 
-    async def _cancel_task(self, task: Optional[Task], task_name: str) -> bool:
+    async def _cancel_task(self, task: Task | None, task_name: str) -> bool:
         '''
         Cancels an asyncio task
         '''
@@ -298,7 +300,7 @@ class ESME:
         '''
         return await asyncio.wait_for(coro, self.socket_timeout)
 
-    async def _get_pdu(self) -> Tuple[bytes, PduHeader]:
+    async def _get_pdu(self) -> tuple[bytes, PduHeader]:
         '''
         Retrieves next PDU from SMSC
         '''
@@ -316,15 +318,15 @@ class ESME:
         '''
         Keeps TCP connection to server alive, and exits in case of broken connection.
         '''
-        sleep_task: Optional[Task] = None
-        event_task: Optional[Task] = None
+        sleep_task: Task | None = None
+        event_task: Task | None = None
         try:
             while True:
                 # Wait for interval to expire or data event to be triggered, whichever comes first.
                 # Receiver function will trigger the event after data is received.
                 sleep_task = asyncio.create_task(asyncio.sleep(self.enquire_link_interval))
                 event_task = asyncio.create_task(self._data_received.wait())
-                done: Set[Task]
+                done: set[Task]
                 done, _pending = await asyncio.wait(
                     {sleep_task, event_task}, return_when=asyncio.FIRST_COMPLETED
                 )
@@ -346,7 +348,7 @@ class ESME:
                     break
 
                 self._data_received.clear()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # This error is expected so we don't include it in logging
             self._logger.error('Timed out while waiting for ENQUIRE_LINK response')
         except CancelledError:
@@ -420,7 +422,7 @@ class ESME:
             )
             await self.correlator.put(smpp_message)
 
-    async def _dequeue_messages(self) -> Dict[str, Any]:
+    async def _dequeue_messages(self) -> AnyDict:
         '''
         In a loop; dequeues items from the :attr:`broker <ESME.broker>` and sends them to SMSC.
         '''
@@ -441,12 +443,12 @@ class ESME:
                             'ESME bound as receiver. Message discarded.', message=smpp_message
                         )
                     continue
-                messages_to_send: List[SmppMessage] = [smpp_message]
+                messages_to_send: list[SmppMessage] = [smpp_message]
                 if isinstance(smpp_message, SubmitSm):
                     smpp_message.set_encoding_info(self.default_encoding, self.custom_codecs)
                     if not smpp_message.auto_message_payload:
                         # If auto_message_payload is not set, the message may need to be split
-                        msg_parts: List[bytes]
+                        msg_parts: list[bytes]
                         parts_count: int
                         ref_num: int = self._ref_seq_generator.next_sequence()
                         if smpp_message.esm_class & 0b01000000:  # UDHI flag is set
@@ -525,7 +527,7 @@ class ESME:
             self._logger.debug('Sender cancelled')
             raise
 
-    async def _receive_data(self) -> Optional[bytes]:
+    async def _receive_data(self) -> bytes | None:
         '''
         In a loop; read bytes from the network connected to SMSC and hand them over
         to the appropriate method for parsing.
@@ -542,12 +544,12 @@ class ESME:
                 header: PduHeader
                 pdu, header = await self._get_pdu()
                 self._data_received.set()  # Inform connection keeper that data was received
-                pdu_handler: Callable[[bytes, PduHeader], Awaitable[Optional[SmppMessage]]]
+                pdu_handler: Callable[[bytes, PduHeader], Awaitable[SmppMessage | None]]
                 if header.smpp_command in COMMAND_RESPONSE_MAP:
                     pdu_handler = self._handle_request
                 else:
                     pdu_handler = self._handle_response
-                smpp_message: Optional[SmppMessage] = await pdu_handler(pdu, header)
+                smpp_message: SmppMessage | None = await pdu_handler(pdu, header)
 
                 self._logger.debug('Calling user hook', hook_method='received')
                 if smpp_message is not _SUBMIT_SM_SEGMENT:
@@ -562,7 +564,7 @@ class ESME:
                 if header.smpp_command in COMMAND_RESPONSE_MAP:
                     # This is a request, we need to respond
                     response_command: SmppCommand = COMMAND_RESPONSE_MAP[header.smpp_command]
-                    response_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[response_command]
+                    response_class: type[SmppMessage] = MESSAGE_TYPE_MAP[response_command]
                     response: SmppMessage = response_class(header.sequence_num)
                     await self._send_data(response)
 
@@ -577,7 +579,7 @@ class ESME:
             self._logger.debug('Receiver cancelled')
             raise
 
-    async def _handle_response(self, pdu: bytes, header: PduHeader) -> Optional[SmppMessage]:
+    async def _handle_response(self, pdu: bytes, header: PduHeader) -> SmppMessage | None:
         '''
         Handles response received from SMSC
 
@@ -610,7 +612,7 @@ class ESME:
             )
             return None
 
-        message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
+        message_class: type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
         try:
             smpp_message: SmppMessage = message_class.from_pdu(pdu, header)
         except ValueError:
@@ -630,10 +632,10 @@ class ESME:
             sequence_num=header.sequence_num,
         )
 
-        original_command: Optional[SmppCommand] = None
+        original_command: SmppCommand | None = None
         if header.smpp_command != SmppCommand.GENERIC_NACK:
             original_command = RESPONSE_COMMAND_MAP[header.smpp_command]
-        original_message: Optional[SmppMessage] = await self.correlator.get(smpp_message)
+        original_message: SmppMessage | None = await self.correlator.get(smpp_message)
         if not original_message:
             # This should not happen
             self._logger.error(
@@ -682,7 +684,7 @@ class ESME:
                 )
                 await self.correlator.put_delivery(smpp_message.message_id, original_message)
 
-                segment_status: Optional[SegmentStatus]
+                segment_status: SegmentStatus | None
                 status_code: int
                 segment_status, status_code = await self.correlator.get_segmented(
                     smpp_message.sequence_num
@@ -710,7 +712,7 @@ class ESME:
 
         return smpp_message
 
-    async def _handle_request(self, pdu: bytes, header: PduHeader) -> Optional[SmppMessage]:
+    async def _handle_request(self, pdu: bytes, header: PduHeader) -> SmppMessage | None:
         '''
         Handles request received from SMSC
 
@@ -740,7 +742,7 @@ class ESME:
             await self._send_data(GenericNack(header.sequence_num))
             return None
 
-        message_class: Type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
+        message_class: type[SmppMessage] = MESSAGE_TYPE_MAP[header.smpp_command]
         try:
             smpp_message: SmppMessage = message_class.from_pdu(
                 pdu, header, self.default_encoding, self.custom_codecs
@@ -759,21 +761,21 @@ class ESME:
         if isinstance(smpp_message, DeliverSm):
             if not smpp_message.is_receipt():
                 if smpp_message.is_segmented():
-                    deliver_sm: Optional[DeliverSm] = await self.correlator.put_delivery_segmented(
+                    deliver_sm: DeliverSm | None = await self.correlator.put_delivery_segmented(
                         smpp_message
                     )
                     if not deliver_sm:
                         # Not all segments have been received, return placeholder
                         smpp_message = _SUBMIT_SM_SEGMENT
             else:
-                receipt: Dict[str, Any] = smpp_message.parse_receipt()
-                msg_id: str = receipt.get('id', '')
+                receipt: dict[str, str | int | datetime] = smpp_message.parse_receipt()
+                msg_id: str = cast(str, receipt.get('id', ''))
                 if msg_id:
-                    orig_message: Optional[SubmitSm] = await self.correlator.get_delivery(
+                    orig_message: SubmitSm | None = await self.correlator.get_delivery(
                         smpp_message
                     )
                     if orig_message:
-                        segment_status: Optional[SegmentStatus]
+                        segment_status: SegmentStatus | None
                         status_code: int
                         segment_status, status_code = await self.correlator.get_segmented(
                             orig_message.sequence_num, remove=True
@@ -864,7 +866,7 @@ class ESME:
                 await self._writer.drain()
             self._writer.write_eof()
             self._writer = None
-        except (OSError, TimeoutError, asyncio.TimeoutError):
+        except (OSError, TimeoutError):
             self._logger.exception('Error while shutting down SMSC connection')
         self._logger.debug('Closed network connection to SMSC')
 
@@ -883,8 +885,9 @@ class ESME:
         self._session_state = SmppSessionState.OPEN
         self._logger.info('Connected to SMSC, trying to bind as a %s', self.bind_mode.description)
         bind_command: SmppCommand = self.bind_mode.smpp_command
-        bind_request_cls: Type[SmppMessage] = MESSAGE_TYPE_MAP[bind_command]
-        assert bind_request_cls in (BindTransmitter, BindReceiver, BindTransceiver)
+        bind_request_cls: type[SmppMessage] = MESSAGE_TYPE_MAP[bind_command]
+        # BindTransmitter and BindReceiver are subclasses of BindTransceiver
+        assert isinstance(bind_request_cls, BindTransceiver)
         bind_request: SmppMessage = bind_request_cls(
             system_id=self.system_id,
             password=self.password,
@@ -904,7 +907,7 @@ class ESME:
         if header.smpp_command != expected_response_command:
             await self.hook.received(None, pdu, self.client_id)  # Send for logging
             raise SmppError(header.smpp_command, header.command_status)
-        bind_response_cls: Type[SmppMessage] = MESSAGE_TYPE_MAP[expected_response_command]
+        bind_response_cls: type[SmppMessage] = MESSAGE_TYPE_MAP[expected_response_command]
         try:
             bind_response: SmppMessage = bind_response_cls.from_pdu(pdu, header)
         except Exception:  # pylint: disable=broad-except
@@ -928,8 +931,8 @@ class ESME:
         '''
         self._logger.info('Starting ESME')
         error_message: str = ''
-        conn_error: Optional[Exception]
-        all_tasks: Set[Task] = set()
+        conn_error: Exception | None
+        all_tasks: set[Task] = set()
         try:
             while True:
                 try:
@@ -940,13 +943,13 @@ class ESME:
                     self.retry_timer.reset()
                     self._bound.set()  # Tell _send_data it can proceed
                     # Wait until any task fails
-                    all_tasks: Set[Task] = {
+                    all_tasks: set[Task] = {
                         asyncio.create_task(self._receive_data(), name='Receiver'),
                         asyncio.create_task(self._dequeue_messages(), name='Sender'),
                         asyncio.create_task(self._connection_keeper(), name='Connection keeper'),
                     }
-                    done_tasks: Set[Task] = set()
-                    pending_tasks: Set[Task] = set()
+                    done_tasks: set[Task] = set()
+                    pending_tasks: set[Task] = set()
                     done_tasks, pending_tasks = await asyncio.wait(
                         all_tasks, return_when=asyncio.FIRST_COMPLETED
                     )
@@ -965,7 +968,7 @@ class ESME:
                 except ConnectionError as err:
                     error_message = 'Connection lost while connecting to SMSC'
                     conn_error = err
-                except (TimeoutError, asyncio.TimeoutError) as err:
+                except TimeoutError as err:
                     error_message = 'Timed out while connecting to SMSC'
                     conn_error = err
                 except (IncompleteReadError, OSError, ValueError) as err:

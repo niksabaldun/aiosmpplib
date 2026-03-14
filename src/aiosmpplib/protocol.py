@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from codecs import CodecInfo
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from math import floor
 from struct import pack, unpack_from
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Final, cast
+
 from .codec import find_codec_info
 from .state import (
     MESSAGE_PAYLOAD,
@@ -17,22 +19,22 @@ from .state import (
     SC_INTERFACE_VERSION,
     TON,
     OptionalParam,
+    PduHeader,
     PhoneNumber,
     SmppCommand,
     SmppCommandStatus,
     SmppDataCoding,
-    PduHeader,
     tag_data_type,
 )
-from .utils import IE_ID_16BIT, check_param, FixedOffset
+from .utils import IE_ID_16BIT, AnyDict, FixedOffset, check_param
+
+NULL: Final[bytes] = b'\x00'
+PDU_HEADER_LENGTH: Final[int] = 16
+SMPP_VERSION_3_4: Final[int] = 0x34
+DEFAULT_ENCODING: Final[str] = 'gsm0338'
 
 
-NULL = b'\x00'
-PDU_HEADER_LENGTH: int = 16
-SMPP_VERSION_3_4: int = 0x34
-DEFAULT_ENCODING: str = 'gsm0338'
-
-
+@dataclass
 class Base(ABC):
     def __post_init__(self):
         # Intercept the __post_init__ calls so they aren't relayed to `object`
@@ -121,7 +123,7 @@ class SmppMessage(Base):
         pdu: bytes,
         header: PduHeader,
         default_encoding: str = '',
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
     ) -> SmppMessage:
         '''
         Creates SmppMessage object from data parsed from byte sequence.
@@ -138,7 +140,7 @@ class SmppMessage(Base):
         return cls(header.sequence_num, header.command_status)
 
     @classmethod
-    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+    def from_json(cls, json_object: AnyDict) -> SmppMessage:
         '''
         Creates SmppMessage object from JSON object.
 
@@ -146,7 +148,10 @@ class SmppMessage(Base):
             json_object: JSON-compatible dictionary
         '''
         # Many messages have empty body, so this is a default
-        return cls(json_object['sequence_num'], SmppCommandStatus(json_object['command_status']))
+        return cls(
+            cast(int, json_object['sequence_num']),
+            SmppCommandStatus(json_object['command_status']),
+        )
 
 
 @dataclass
@@ -191,14 +196,14 @@ class SubmitSm(Trackable, SmppMessage):
     esm_class: int = 0b00000000
     protocol_id: int = 0b00000000
     priority_flag: int = 0b00000000
-    schedule_delivery_time: Optional[Union[datetime, timedelta]] = None
-    validity_period: Optional[Union[datetime, timedelta]] = None
+    schedule_delivery_time: datetime | timedelta | None = None
+    validity_period: datetime | timedelta | None = None
     registered_delivery: int = 0b00000001
     replace_if_present_flag: int = 0b00000000
-    encoding: Optional[str] = None
+    encoding: str | None = None
     sm_default_msg_id: int = 0b00000000
     message_payload: str = ''
-    optional_params: Optional[List[OptionalParam]] = None
+    optional_params: list[OptionalParam] | None = None
     auto_message_payload: bool = True
     error_handling: str = 'strict'
 
@@ -245,7 +250,7 @@ class SubmitSm(Trackable, SmppMessage):
         super().__post_init__()
         # default_encoding and custom_codecs need to be set by ESME/SMSC before sending
         self._default_encoding: str = DEFAULT_ENCODING
-        self._custom_codecs: Optional[Dict[str, CodecInfo]] = None
+        self._custom_codecs: dict[str, CodecInfo] | None = None
         self._encoded_message: bytes = b''
 
     @property
@@ -253,7 +258,7 @@ class SubmitSm(Trackable, SmppMessage):
         return SmppCommand.SUBMIT_SM
 
     @staticmethod
-    def datetime_to_smpp_time(time_object: Optional[Union[datetime, timedelta]]) -> str:
+    def datetime_to_smpp_time(time_object: datetime | timedelta | None) -> str:
         '''
         Converts Python time object to SMPP time format.
 
@@ -265,7 +270,7 @@ class SubmitSm(Trackable, SmppMessage):
         if isinstance(time_object, datetime):
             # datetime is converted to absolute validity
             tenth_second: str = str(time_object.microsecond // 100000)
-            offset: Optional[timedelta] = (
+            offset: timedelta | None = (
                 time_object.tzinfo.utcoffset(time_object) if time_object.tzinfo else None
             )
             offset_str: str
@@ -297,7 +302,7 @@ class SubmitSm(Trackable, SmppMessage):
         raise ValueError('Only datetime and timedelta objects can be converted to SMPP format')
 
     @staticmethod
-    def smpp_time_to_datetime(smpp_time: str) -> Optional[Union[datetime, timedelta]]:
+    def smpp_time_to_datetime(smpp_time: str) -> datetime | timedelta | None:
         '''
         Converts string in SMPP time format to Python time object.
 
@@ -334,7 +339,7 @@ class SubmitSm(Trackable, SmppMessage):
         )
 
     def set_encoding_info(
-        self, default_encoding: str, custom_codecs: Optional[Dict[str, CodecInfo]]
+        self, default_encoding: str, custom_codecs: dict[str, CodecInfo] | None
     ) -> None:
         '''
         Sets info neccessary for encoding message text.
@@ -460,7 +465,7 @@ class SubmitSm(Trackable, SmppMessage):
                 return True
         return False
 
-    def get_segmentation_data(self) -> Tuple[int, int, int]:
+    def get_segmentation_data(self) -> tuple[int, int, int]:
         ref_num: int = 0
         seq_num: int = 0
         total_segments: int = 0
@@ -479,7 +484,7 @@ class SubmitSm(Trackable, SmppMessage):
         pdu: bytes,
         header: PduHeader,
         default_encoding: str = '',
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
     ) -> SmppMessage:
         def get_c_octet_string() -> str:
             nonlocal index
@@ -498,7 +503,7 @@ class SubmitSm(Trackable, SmppMessage):
 
         def get_integer(count: int) -> int:
             nonlocal index
-            int_format: Dict[int, str] = {
+            int_format: dict[int, str] = {
                 1: '!B',  # unsigned char
                 2: '!H',  # unsigned short
                 4: '!I',  # unsigned int
@@ -534,7 +539,7 @@ class SubmitSm(Trackable, SmppMessage):
                 optional_params.append(OptionalParam(SAR_TOTAL_SEGMENTS, total))
             return codec_info.decode(raw_message[ind:])[0]
 
-        optional_params: List[OptionalParam] = []
+        optional_params: list[OptionalParam] = []
         index: int = PDU_HEADER_LENGTH  # Only body is parsed here, header is pre-parsed
         service_type: str = get_c_octet_string()
         source_ton: TON = TON(get_integer(1))
@@ -571,15 +576,15 @@ class SubmitSm(Trackable, SmppMessage):
         while index < header.pdu_length:
             tag: int = get_integer(2)
             length: int = get_integer(2)
-            tag_type: Type = tag_data_type(tag)
+            tag_type: type = tag_data_type(tag)
             if tag == MESSAGE_PAYLOAD:
                 # message_payload is a special case, it is an alternative to short_message
                 message_payload = decode_message(pdu[index : index + length])
                 index += length
-            elif tag_type == int:
+            elif tag_type is int:
                 int_value: int = get_integer(length)
                 optional_params.append(OptionalParam(tag, int_value))
-            elif tag_type == bool:
+            elif tag_type is bool:
                 # alert_on_message_delivery doesn't have an actual value (it is zero-length),
                 # but is a bool param, so we set it to True
                 optional_params.append(OptionalParam(tag, True))
@@ -608,56 +613,63 @@ class SubmitSm(Trackable, SmppMessage):
         )
 
     @classmethod
-    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
-        source_dict: Dict[str, Any] = json_object['source']
+    def from_json(cls, json_object: AnyDict) -> SmppMessage:
+        source_dict: AnyDict = cast(AnyDict, json_object['source'])
         source: PhoneNumber = PhoneNumber(
-            source_dict['number'], TON(source_dict['ton']), NPI(source_dict['npi'])
+            cast(str, source_dict['number']),
+            TON(source_dict['ton']), NPI(source_dict['npi']),
         )
-        destination_dict: Dict[str, Any] = json_object['destination']
+        destination_dict: AnyDict = cast(AnyDict, json_object['destination'])
         destination: PhoneNumber = PhoneNumber(
-            destination_dict['number'], TON(destination_dict['ton']), NPI(destination_dict['npi'])
+            cast(str, destination_dict['number']),
+            TON(destination_dict['ton']), NPI(destination_dict['npi']),
         )
-        schedule_delivery_time: Optional[Union[datetime, timedelta]]
+        schedule_delivery_time: datetime | timedelta | None
         if isinstance(json_object['schedule_delivery_time'], str):
             schedule_delivery_time = datetime.fromisoformat(json_object['schedule_delivery_time'])
         elif isinstance(json_object['schedule_delivery_time'], float):
             schedule_delivery_time = timedelta(seconds=json_object['schedule_delivery_time'])
         else:
             schedule_delivery_time = None
-        validity_period: Optional[Union[datetime, timedelta]]
+        validity_period: datetime | timedelta | None
         if isinstance(json_object['validity_period'], str):
             validity_period = datetime.fromisoformat(json_object['validity_period'])
         elif isinstance(json_object['validity_period'], float):
             validity_period = timedelta(seconds=json_object['validity_period'])
         else:
             validity_period = None
+        optional_params: list[OptionalParam]
+        params_list: list[AnyDict] = cast(list[AnyDict], json_object['optional_params'])
         if not json_object['optional_params']:
-            optional_params: List[OptionalParam] = []
+            optional_params = []
         else:
-            optional_params: List[OptionalParam] = [
-                OptionalParam(param_dict['tag'], param_dict['value'])
-                for param_dict in json_object['optional_params']
+            optional_params = [
+                OptionalParam(
+                    cast(int, param_dict['tag']),
+                    cast(int | str | bool, param_dict['value']),
+                )
+                for param_dict in params_list
             ]
 
         return cls(
-            sequence_num=json_object['sequence_num'],
-            short_message=json_object['short_message'],
+            sequence_num=cast(int, json_object['sequence_num']),
+            short_message=cast(str, json_object['short_message']),
             source=source,
             destination=destination,
-            service_type=json_object['service_type'],
-            esm_class=json_object['esm_class'],
-            protocol_id=json_object['protocol_id'],
-            priority_flag=json_object['priority_flag'],
+            service_type=cast(str, json_object['service_type']),
+            esm_class=cast(int, json_object['esm_class']),
+            protocol_id=cast(int, json_object['protocol_id']),
+            priority_flag=cast(int, json_object['priority_flag']),
             schedule_delivery_time=schedule_delivery_time,
             validity_period=validity_period,
-            registered_delivery=json_object['registered_delivery'],
-            replace_if_present_flag=json_object['replace_if_present_flag'],
-            encoding=json_object['encoding'],
-            sm_default_msg_id=json_object['sm_default_msg_id'],
-            message_payload=json_object['message_payload'],
+            registered_delivery=cast(int, json_object['registered_delivery']),
+            replace_if_present_flag=cast(int, json_object['replace_if_present_flag']),
+            encoding=cast(str, json_object['encoding']),
+            sm_default_msg_id=cast(int, json_object['sm_default_msg_id']),
+            message_payload=cast(str, json_object['message_payload']),
             optional_params=optional_params,
-            auto_message_payload=json_object['auto_message_payload'],
-            error_handling=json_object['error_handling'],
+            auto_message_payload=cast(bool, json_object['auto_message_payload']),
+            error_handling=cast(str, json_object['error_handling']),
         )
 
 
@@ -690,7 +702,7 @@ class SubmitSmResp(Trackable, SmppMessage):
         pdu: bytes,
         header: PduHeader,
         default_encoding: str = '',
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
     ) -> SmppMessage:
         # pylint: disable=unused-argument
         # Decode the full body of the PDU, minus terminating NULL char
@@ -702,11 +714,11 @@ class SubmitSmResp(Trackable, SmppMessage):
         )
 
     @classmethod
-    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+    def from_json(cls, json_object: AnyDict) -> SmppMessage:
         return cls(
-            sequence_num=json_object['sequence_num'],
+            sequence_num=cast(int, json_object['sequence_num']),
             command_status=SmppCommandStatus(json_object['command_status']),
-            message_id=json_object['message_id'],
+            message_id=cast(str, json_object['message_id']),
         )
 
 
@@ -718,7 +730,7 @@ class DeliverSm(SubmitSm):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self._parsed_receipt: Optional[Dict[str, Any]] = None
+        self._parsed_receipt: dict[str, str | int | datetime] | None = None
 
     @property
     def smpp_command(self) -> SmppCommand:
@@ -731,7 +743,7 @@ class DeliverSm(SubmitSm):
         # Only middle 4 bits are relevant: 0 = incoming SMS, 1 = delivery receipt
         return (self.esm_class & 0b00111100) >> 2 == 1
 
-    def parse_receipt(self) -> Dict[str, Any]:
+    def parse_receipt(self) -> dict[str, str | int | datetime]:
         '''
         Parses short_message text and returns a dictionary with receipt data.
         '''
@@ -741,7 +753,7 @@ class DeliverSm(SubmitSm):
         if self._parsed_receipt is not None:
             return self._parsed_receipt
 
-        def get_receipt_param() -> Tuple[Optional[str], Optional[str]]:
+        def get_receipt_param() -> tuple[str | None, str | None]:
             nonlocal index
             str_end: int = self.short_message.find(':', index)
             if str_end == -1:
@@ -757,8 +769,8 @@ class DeliverSm(SubmitSm):
 
         self._parsed_receipt = {}
         index: int = 0
-        rcpt_param: Optional[str]
-        rcpt_value: Optional[str]
+        rcpt_param: str | None
+        rcpt_value: str | None
         while True:
             rcpt_param, rcpt_value = get_receipt_param()
             if rcpt_param is None or rcpt_value is None:
@@ -772,12 +784,11 @@ class DeliverSm(SubmitSm):
             else:
                 self._parsed_receipt[rcpt_param] = rcpt_value
 
-        smsc_message_id: Optional[str] = self._parsed_receipt.get(
-            'id'
-        )  # Get message ID from report data
+        # Get message ID from report data
+        smsc_message_id: str | None = cast(str | None, self._parsed_receipt.get('id'))
         if not smsc_message_id and self.optional_params:
             # Message ID not found, check if receipted_message_id param exists
-            id_param: Optional[OptionalParam] = next(
+            id_param: OptionalParam | None = next(
                 (
                     param
                     for param in self.optional_params
@@ -791,7 +802,7 @@ class DeliverSm(SubmitSm):
         return self._parsed_receipt
 
     @staticmethod
-    def encode_receipt(rcpt_data: Dict[str, Any]) -> str:
+    def encode_receipt(rcpt_data: dict[str, str | int | datetime]) -> str:
         '''
         Encodes receipt dictionary in text.
 
@@ -799,18 +810,24 @@ class DeliverSm(SubmitSm):
             rcpt_data: A dictionary containing receipt data.
         '''
         # Receipt format is SMSC-specific, but it usually follows the following pattern
-        msg_id: str = rcpt_data.get('id', '')  # Message ID allocated by the SMSC when submitted.
-        sub: int = rcpt_data.get('sub', 0)  # Number of short messages originally submitted.
-        dlvrd: int = rcpt_data.get('dlvrd', 0)  # Number of short messages delivered.
+        # Message ID allocated by the SMSC when submitted.
+        msg_id: str = cast(str, rcpt_data.get('id', ''))
+        # Number of short messages originally submitted.
+        sub: int = cast(int, rcpt_data.get('sub', 0))
+        # Number of short messages delivered.
+        dlvrd: int = cast(int, rcpt_data.get('dlvrd', 0))
         # The time and date at which the message was submitted.
-        submit_date: Optional[datetime] = rcpt_data.get('submit date')
+        submit_date: datetime | None = cast(datetime | None, rcpt_data.get('submit date'))
         submit_date_str: str = submit_date.strftime('%y%m%d%H%M') if submit_date else ''
         # The time and date at which the message reached its final state.
-        done_date: Optional[datetime] = rcpt_data.get('done date')
+        done_date: datetime | None = cast(datetime | None, rcpt_data.get('done date'))
         done_date_str: str = done_date.strftime('%y%m%d%H%M') if done_date else ''
-        stat: str = rcpt_data.get('stat', '')  # The final status of the message.
-        err: int = rcpt_data.get('err', 0)  # Network specific error code or an SMSC error code.
-        text: str = rcpt_data.get('text', '')  # The first 20 characters of the short message.
+        # The final status of the message.
+        stat: str = cast(str, rcpt_data.get('stat', ''))
+        # Network specific error code or an SMSC error code.
+        err: int = cast(int, rcpt_data.get('err', 0))
+        # The first 20 characters of the short message.
+        text: str = cast(str, rcpt_data.get('text', ''))
         return (
             f'id:{msg_id} sub:{sub:03d} dlvrd:{dlvrd:03d}'
             f' submit date:{submit_date_str} done date:{done_date_str}'
@@ -897,7 +914,7 @@ class BindTransceiver(SmppMessage):
         pdu: bytes,
         header: PduHeader,
         default_encoding: str = '',
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
     ) -> SmppMessage:
         # pylint: disable=unused-argument
         def get_c_octet_string() -> str:
@@ -934,16 +951,16 @@ class BindTransceiver(SmppMessage):
         )
 
     @classmethod
-    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+    def from_json(cls, json_object: AnyDict) -> SmppMessage:
         return cls(
-            sequence_num=json_object['sequence_num'],
-            system_id=json_object['system_id'],
-            password=json_object['password'],
-            system_type=json_object['system_type'],
-            interface_version=json_object['interface_version'],
+            sequence_num=cast(int, json_object['sequence_num']),
+            system_id=cast(str, json_object['system_id']),
+            password=cast(str, json_object['password']),
+            system_type=cast(str, json_object['system_type']),
+            interface_version=cast(int, json_object['interface_version']),
             addr_ton=TON(json_object['addr_ton']),
             addr_npi=NPI(json_object['addr_npi']),
-            address_range=json_object['address_range'],
+            address_range=cast(str, json_object['address_range']),
         )
 
 
@@ -958,7 +975,7 @@ class BindTransceiverResp(SmppMessage):
     '''
 
     system_id: str = ''
-    sc_interface_version: Optional[int] = None
+    sc_interface_version: int | None = None
 
     def __post_init__(self) -> None:
         check_param(self.system_id, 'system_id', str, maxlen=15)
@@ -980,13 +997,13 @@ class BindTransceiverResp(SmppMessage):
         pdu: bytes,
         header: PduHeader,
         default_encoding: str = '',
-        custom_codecs: Optional[Dict[str, CodecInfo]] = None,
+        custom_codecs: dict[str, CodecInfo] | None = None,
     ) -> SmppMessage:
         # pylint: disable=unused-argument
         index: int = pdu.index(NULL, PDU_HEADER_LENGTH)
         system_id: str = pdu[PDU_HEADER_LENGTH:index].decode('ascii')
         index += 1
-        sc_interface_version: Optional[int] = None
+        sc_interface_version: int | None = None
         if index < header.pdu_length:
             # Optional param sc_interface_version. It must have a total of 5 bytes in length.
             index += 4
@@ -1000,12 +1017,12 @@ class BindTransceiverResp(SmppMessage):
         )
 
     @classmethod
-    def from_json(cls, json_object: Dict[str, Any]) -> SmppMessage:
+    def from_json(cls, json_object: AnyDict) -> SmppMessage:
         return cls(
-            sequence_num=json_object['sequence_num'],
+            sequence_num=cast(int, json_object['sequence_num']),
             command_status=SmppCommandStatus(json_object['command_status']),
-            system_id=json_object['system_id'],
-            sc_interface_version=json_object['sc_interface_version'],
+            system_id=cast(str, json_object['system_id']),
+            sc_interface_version=cast(int, json_object['sc_interface_version']),
         )
 
 
@@ -1097,7 +1114,7 @@ class UnbindResp(SmppMessage):
         return SmppCommand.UNBIND_RESP
 
 
-MESSAGE_TYPE_MAP: Dict[SmppCommand, Type[SmppMessage]] = {
+MESSAGE_TYPE_MAP: dict[SmppCommand, type[SmppMessage]] = {
     SmppCommand.GENERIC_NACK: GenericNack,
     SmppCommand.SUBMIT_SM: SubmitSm,
     SmppCommand.SUBMIT_SM_RESP: SubmitSmResp,

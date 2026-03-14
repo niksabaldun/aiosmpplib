@@ -1,83 +1,78 @@
 import os
 import time
-from collections.abc import Mapping
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from types import EllipsisType
-from typing import Any, Dict, Iterator, MutableMapping, Optional, Tuple, TypeVar, Union
+from collections.abc import Callable, Iterator, MutableMapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Final, TypeVar, cast
+
 from .hook import AbstractHook
 from .jsonutils import dict_to_smpp_message, json_encode, json_loads
 from .protocol import DeliverSm, SmppMessage, SubmitSm
 from .state import DLR_ERROR_OTHER_ERROR, SmppCommand, SmppCommandStatus
-from .utils import check_param
+from .utils import AnyDict, check_param
 
-
-STATUS_SENDING = 65535
-STATUS_FAILED = 65534
-STATUS_EXPIRED = 65533
-STATUS_SENT = 65532
+STATUS_SENDING: Final[int] = 65535
+STATUS_FAILED: Final[int] = 65534
+STATUS_EXPIRED: Final[int] = 65533
+STATUS_SENT: Final[int] = 65532
 
 _EXPIRED_ERROR: TimeoutError = TimeoutError('No response to command received within timeout')
 
+_T = TypeVar('_T')
 VT = TypeVar('VT')
 
 
-@dataclass
+@dataclass(slots=True)
 class SegmentStatus:
-    status: Dict[str, int]  # Status of individual segments (seq_num: status_code)
+    status: dict[str, int]  # Status of individual segments (seq_num: status_code)
     orig_submit_sm: SubmitSm  # Original SubmitSm that is being segmented
-    last_response: Optional[SmppMessage] = (
+    last_response: SmppMessage | None = (
         None  # Last response, or last failed response if there was a failure
     )
-    last_receipt: Optional[DeliverSm] = (
+    last_receipt: DeliverSm | None = (
         None  # Last delivery receipt, or last failed receipt if there was a failure
     )
 
 
 class PersistingDict(MutableMapping[str, VT]):
-    def __init__(self, directory: str, file_name: str, /, **kwargs: Any) -> None:
-        self._data: Dict[str, VT] = {}
+    def __init__(
+        self, directory: str, file_name: str, converter: Callable[[object], VT] | None = None
+    ) -> None:
+        self._data: dict[str, VT] = {}
         self._file_name: str = os.path.join(directory, file_name) if directory else ''
         if self._file_name:
             try:
                 with open(self._file_name, 'rb') as json_file:
-                    data: Union[Any, Dict[str, Any]] = json_loads(json_file.read())
+                    data: object = json_loads(json_file.read())
                     if isinstance(data, dict):
-                        for key, value in data.items():
-                            if isinstance(value, dict):
-                                data[key] = self._process_object(value)
-                            elif isinstance(value, list):
-                                for ind, member in enumerate(value):
-                                    if isinstance(member, dict):
-                                        value[ind] = self._process_object(member)
-                    self._data = data
+                        if converter:
+                            self._data = {key: converter(value) for key, value in data.items()}
+                        else:
+                            self._data = data
             except Exception:
                 pass
-
-    @staticmethod
-    def _process_object(obj: Dict[str, Any]) -> Any:
-        if '__smpp_command__' in obj:
-            return dict_to_smpp_message(obj)
-        if 'orig_submit_sm' in obj:
-            return SegmentStatus(**obj)
-        return obj
 
     def _save(self):
         if self._file_name:
             with open(self._file_name, 'w') as json_file:
                 json_file.write(json_encode(self._data))
 
-    def __contains__(self, key: str) -> bool:
+    def __contains__(self, key: object) -> bool:
         return key in self._data
+
+    def __setitem__(self, key: str, value: VT) -> None:
+        if not isinstance(key, str):
+            raise TypeError(f'Keys must be str, got {type(key).__name__!r}')
+        self._data[key] = value
+        self._save()
+
+    def __getitem__(self, key: str) -> VT:
+        return self._data[key]
 
     def __delitem__(self, key: str) -> None:
         del self._data[key]
         self._save()
-
-    def __getitem__(self, key: str) -> VT:
-        if key in self._data:
-            return self._data[key]
-        raise KeyError(key)
 
     def __len__(self) -> int:
         return len(self._data)
@@ -85,35 +80,9 @@ class PersistingDict(MutableMapping[str, VT]):
     def __iter__(self) -> Iterator[str]:
         return iter(self._data)
 
-    def __setitem__(self, key: str, value: VT) -> None:
-        self._data[key] = value
-        self._save()
-
-    def pop(self, key: str, default: Optional[Union[VT, EllipsisType]] = ...) -> Optional[VT]:
-        if key in self._data:
-            item: VT = self._data.pop(key)
-            self._save()
-            return item
-        if default is ...:
-            raise KeyError(key)
-        return default
-
-    def update(self, other=(), /, **kwds) -> None:
-        if isinstance(other, Mapping):
-            for key in other:
-                self._data[key] = other[key]
-        elif hasattr(other, 'keys'):
-            for key in other.keys():
-                self._data[key] = other[key]
-        else:
-            for key, value in other:
-                self._data[key] = value
-        for key, value in kwds.items():
-            self._data[key] = value
-
 
 class AbstractCorrelator(ABC):
-    '''
+    """
     Interface that must be implemented to satisfy aiosmpplib Correlator.
     User implementations should inherit this class and
     implement the :func:`get <AbstractCorrelator.get>`, :func:`put <AbstractCorrelator.put>`,
@@ -142,7 +111,7 @@ class AbstractCorrelator(ABC):
 
     SubmitSm Correlation is based on message ID received in delivery report, which can
     either be in receipted_message_id optional parameter or in message text.
-    '''
+    """
 
     # Parent MUST set these properties before use
     hook: AbstractHook = None  # type: ignore
@@ -150,50 +119,50 @@ class AbstractCorrelator(ABC):
 
     @abstractmethod
     def get_cumulated_status(self, ref_num: int) -> int:
-        '''
+        """
         Get cumulated status of a segmented message by reference number
 
         Parameters:
             smpp_message: Protocol message whose correlation data has expired.
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
     async def expired(self, smpp_message: SmppMessage) -> None:
-        '''
+        """
         Correlator implementation MUST call this method whenever correlation data expires
         before receiving a response from SMPP peer.
 
         Parameters:
             smpp_message: Protocol message whose correlation data has expired.
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
     async def put(self, smpp_message: SmppMessage) -> None:
-        '''
+        """
         Called to store the correlation between a SMPP sequence number and sent message,
         and also between a segmented SubmitSm and segmentation reference number.
 
         Parameters:
             smpp_message: Protocol message that should be correlated.
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
     async def put_delivery(self, smsc_message_id: str, submit_sm: SubmitSm) -> None:
-        '''
+        """
         Called to store the correlation between a SubmitSm and a DeliverSm receipt.
 
         Parameters:
             smsc_message_id: Unique identifier of a message on the SMSC. It comes from SMSC.
             submit_sm: SubmitSm that should be correlated
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
-    async def put_delivery_segmented(self, deliver_sm: DeliverSm) -> Optional[DeliverSm]:
-        '''
+    async def put_delivery_segmented(self, deliver_sm: DeliverSm) -> DeliverSm | None:
+        """
         Called to store the segmented DeliverSm and optionally return
         full DeliverSm once all segments are received.
 
@@ -202,12 +171,12 @@ class AbstractCorrelator(ABC):
 
         Returns:
             Full DeliverSm, if all segments are received
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
-    async def get(self, response: SmppMessage) -> Optional[SmppMessage]:
-        '''
+    async def get(self, response: SmppMessage) -> SmppMessage | None:
+        """
         Called to get the correlation between a SMPP sequence number and sent message.
 
         Parameters:
@@ -215,14 +184,14 @@ class AbstractCorrelator(ABC):
 
         Returns:
             Correlated Message object, if any
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
     async def get_segmented(
         self, smpp_seq_num: int, remove: bool = False
-    ) -> Tuple[Optional[SegmentStatus], int]:
-        '''
+    ) -> tuple[SegmentStatus | None, int]:
+        """
         Called to get the correlation between a segmented SubmitSm
         and its specific segment.
 
@@ -232,12 +201,12 @@ class AbstractCorrelator(ABC):
 
         Returns:
             SegmentStatus object and cumulated status, if any
-        '''
+        """
         raise NotImplementedError()
 
     @abstractmethod
-    async def get_delivery(self, receipt: DeliverSm) -> Optional[SubmitSm]:
-        '''
+    async def get_delivery(self, receipt: DeliverSm) -> SubmitSm | None:
+        """
         Called to get the correlation between a SubmitSm and a DeliverSm receipt.
 
         Parameters:
@@ -247,12 +216,12 @@ class AbstractCorrelator(ABC):
 
         Returns:
             A correlated SubmitSm message or None if not found
-        '''
+        """
         raise NotImplementedError()
 
 
 class SimpleCorrelator(AbstractCorrelator):
-    '''
+    """
     A simple implementation of AbstractCorrelator.
     It manages the correlation between SMPP requests and responses,
     between segmented message and its parts
@@ -277,7 +246,7 @@ class SimpleCorrelator(AbstractCorrelator):
             'smsc_message_id2': (682.109023565, 'log_id2', 'hook_metadata2'),
             ...
        }
-    '''
+    """
 
     def __init__(
         self,
@@ -286,13 +255,13 @@ class SimpleCorrelator(AbstractCorrelator):
         max_ttl_response: float = 15.00,
         max_ttl_delivery: float = 259200.00,
     ) -> None:
-        '''
+        """
         Parameters:
             name: Correlator name
             directory: Filesystem directory in which to persist the correlation data
             max_ttl_response: The time in seconds that a request/response correlation will be stored
             max_ttl_delivery: The time in seconds that a submit/delivery correlation will be stored
-        '''
+        """
         check_param(max_ttl_response, 'max_ttl_response', float)
         if max_ttl_response < 1.00:
             raise ValueError(
@@ -306,21 +275,33 @@ class SimpleCorrelator(AbstractCorrelator):
         self.max_ttl_response: float = max_ttl_response
         self.max_ttl_delivery: float = max_ttl_delivery
         # Dict keys are string for easier serialization
-        self._store: PersistingDict[Tuple[float, SmppMessage]] = PersistingDict(
-            directory, name + '_store.json'
+        self._store: PersistingDict[tuple[float, SmppMessage]] = PersistingDict(
+            directory, name + '_store.json', self._to_message_tuple
         )  # seq_num: (stored_at, message)
-        self._segment_store: PersistingDict[Tuple[int, int]] = PersistingDict(
+        self._segment_store: PersistingDict[tuple[int, int]] = PersistingDict(
             directory, name + '_segment_store.json'
         )  # seq_num: (ref_num, segment_seq_num)
         self._segment_status_store: PersistingDict[SegmentStatus] = PersistingDict(
-            directory, name + '_segment_status_store.json'
+            directory, name + '_segment_status_store.json', self._to_segment_status
         )  # ref_num: segment_status
-        self._delivery_store: PersistingDict[Tuple[float, SubmitSm]] = PersistingDict(
-            directory, name + '_delivery_store.json'
+        self._delivery_store: PersistingDict[tuple[float, SubmitSm]] = PersistingDict(
+            directory, name + '_delivery_store.json', self._to_submitsm_tuple
         )  # msg_id: (stored_at, submit_sm)
-        self._delivery_segment_store: PersistingDict[Tuple[float, Dict[str, str]]] = PersistingDict(
+        self._delivery_segment_store: PersistingDict[tuple[float, dict[str, str]]] = PersistingDict(
             directory, name + '_delivery_segment_store.json'
         )  # ref_num: (stored_at, {seq_num: segment_text})
+
+    def _to_message_tuple(self, obj: object) -> tuple[float, SmppMessage]:
+        obj = cast(tuple[float, AnyDict], obj)
+        msg: SmppMessage = dict_to_smpp_message(obj[1])
+        return obj[0], msg
+
+    def _to_submitsm_tuple(self, obj: object) -> tuple[float, SubmitSm]:
+        return cast(tuple[float, SubmitSm], self._to_message_tuple(obj))
+
+    def _to_segment_status(self, obj: object) -> SegmentStatus:
+        obj = cast(AnyDict, obj)
+        return SegmentStatus(**obj)  # type: ignore[arg-type]  # Data is assumed to be compatible
 
     def get_cumulated_status(self, ref_num: int) -> int:
         ref_key: str = str(ref_num)
@@ -337,10 +318,8 @@ class SimpleCorrelator(AbstractCorrelator):
         if isinstance(smpp_message, SubmitSm):
             sequence_key: str = str(smpp_message.sequence_num)
             if sequence_key in self._segment_store.keys():
-                ref_num, seq_num = self._segment_store.pop(sequence_key)  # type: ignore ; we check for key existence
-                segment_status: Optional[SegmentStatus] = self._segment_status_store.get(
-                    str(ref_num)
-                )
+                ref_num, seq_num = self._segment_store.pop(sequence_key)
+                segment_status: SegmentStatus | None = self._segment_status_store.get(str(ref_num))
                 if segment_status:
                     segment_status.status[str(seq_num)] = STATUS_EXPIRED
                     if self.get_cumulated_status(ref_num) == STATUS_EXPIRED:
@@ -374,14 +353,14 @@ class SimpleCorrelator(AbstractCorrelator):
         stored_at: float = time.monotonic()
         self._delivery_store[smsc_message_id] = (stored_at, submit_sm)
 
-    async def put_delivery_segmented(self, deliver_sm: DeliverSm) -> Optional[DeliverSm]:
+    async def put_delivery_segmented(self, deliver_sm: DeliverSm) -> DeliverSm | None:
         stored_at: float = time.monotonic()
         text = deliver_sm.short_message or deliver_sm.message_payload
         ref_num, seq_num, total_segments = deliver_sm.get_segmentation_data()
-        segment_data: Optional[Tuple[float, Dict[str, str]]] = self._delivery_segment_store.get(
+        segment_data: tuple[float, dict[str, str]] | None = self._delivery_segment_store.get(
             str(ref_num)
         )
-        segments: Dict[str, str]
+        segments: dict[str, str]
         if not segment_data:
             segments = {str(seq_num): text}
             segment_data = (stored_at, segments)
@@ -402,16 +381,16 @@ class SimpleCorrelator(AbstractCorrelator):
         await self._remove_expired()
         return None
 
-    async def get(self, response: SmppMessage) -> Optional[SmppMessage]:
+    async def get(self, response: SmppMessage) -> SmppMessage | None:
         sequence_key: str = str(response.sequence_num)
-        item: Optional[Tuple[float, SmppMessage]] = self._store.pop(sequence_key, None)
-        smpp_message: Optional[SmppMessage] = None
+        item: tuple[float, SmppMessage] | None = self._store.pop(sequence_key, None)
+        smpp_message: SmppMessage | None = None
         if item:
             smpp_message = item[1]
             if isinstance(smpp_message, SubmitSm):
                 if sequence_key in self._segment_store:
                     ref_num, seq_num = self._segment_store[sequence_key]
-                    segment_status: Optional[SegmentStatus] = self._segment_status_store.get(
+                    segment_status: SegmentStatus | None = self._segment_status_store.get(
                         str(ref_num)
                     )
                     if segment_status:
@@ -431,29 +410,29 @@ class SimpleCorrelator(AbstractCorrelator):
 
     async def get_segmented(
         self, smpp_seq_num: int, remove: bool = False
-    ) -> Tuple[Optional[SegmentStatus], int]:
-        item: Optional[Tuple[int, int]] = self._segment_store.get(str(smpp_seq_num))
+    ) -> tuple[SegmentStatus | None, int]:
+        item: tuple[int, int] | None = self._segment_store.get(str(smpp_seq_num))
         if not item:
             return None, 0
         if remove:
             del self._segment_store[str(smpp_seq_num)]
         ref_num: int = item[0]
-        segment_status: Optional[SegmentStatus] = self._segment_status_store.get(str(ref_num))
+        segment_status: SegmentStatus | None = self._segment_status_store.get(str(ref_num))
         if not segment_status:
             # This should not happen
             return None, 0
         status_code: int = self.get_cumulated_status(ref_num)
         return segment_status, status_code
 
-    async def get_delivery(self, receipt: DeliverSm) -> Optional[SubmitSm]:
-        receipt_dict: Dict[str, Any] = receipt.parse_receipt()
-        smsc_message_id: str = receipt_dict.get('id', '')
-        item: Optional[Tuple[float, SubmitSm]] = self._delivery_store.pop(smsc_message_id, None)
-        submit_sm: Optional[SubmitSm] = item[1] if item else None
+    async def get_delivery(self, receipt: DeliverSm) -> SubmitSm | None:
+        receipt_dict: dict[str, str | int | datetime] = receipt.parse_receipt()
+        smsc_message_id: str = cast(str, receipt_dict.get('id', ''))
+        item: tuple[float, SubmitSm] | None = self._delivery_store.pop(smsc_message_id, None)
+        submit_sm: SubmitSm | None = item[1] if item else None
         if submit_sm and str(submit_sm.sequence_num) in self._segment_store.keys():
-            error_code: int = receipt_dict.get('err', DLR_ERROR_OTHER_ERROR)
+            error_code: int = cast(int, receipt_dict.get('err', DLR_ERROR_OTHER_ERROR))
             ref_num, seq_num = self._segment_store[str(submit_sm.sequence_num)]
-            segment_status: Optional[SegmentStatus] = self._segment_status_store.get(str(ref_num))
+            segment_status: SegmentStatus | None = self._segment_status_store.get(str(ref_num))
             if segment_status:
                 segment_status.status[str(seq_num)] = error_code
                 if error_code > 0 or not segment_status.last_receipt:

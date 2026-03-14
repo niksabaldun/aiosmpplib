@@ -1,0 +1,51 @@
+[project]
+name = "aiosmpplib"
+version = "0.7.3"
+description = "An asynchronous SMPP library for use with asyncio."
+readme = "README.rst"
+authors = [
+    { name = "Nikša Baldun", email = "niksa.baldun@voxdiversa.hr" }
+]
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+    "Typing :: Typed",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.uv]
+default-groups = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aiosmpplib"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ty.environment]
+extra-paths = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "aioconsole>=0.8.2",
+    "orjson>=3.11.7",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.0",
+]

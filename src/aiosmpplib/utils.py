@@ -1,28 +1,30 @@
 from datetime import datetime, timedelta, tzinfo
 from random import randint
 from struct import pack
-from typing import Any, List, Optional, Tuple, Type, Union
+from typing import Final, TypeAlias
+
 from .codec import ESCAPE, GSM7BitCodec, UCS2Codec
 
+AnyDict: TypeAlias = dict[str, object]
 
 # Max single SMS sizes
-MAX_OCTET_SIZE: int = 140
-MAX_SEPTET_SIZE: int = 160
-MAX_SM_SIZE: int = 254
+MAX_OCTET_SIZE: Final[int] = 140
+MAX_SEPTET_SIZE: Final[int] = 160
+MAX_SM_SIZE: Final[int] = 254
 
 # Concatenated message reference types
-IE_ID_8BIT: int = 0x00
-IE_ID_16BIT: int = 0x08
+IE_ID_8BIT: Final[int] = 0x00
+IE_ID_16BIT: Final[int] = 0x08
 
 
-def check_param(param: Any, param_name: str, param_type: Union[Type, Tuple[Type, ...]],
+def check_param(param: object, param_name: str, param_type: type | tuple[type, ...],
                 optional: bool=False, maxlen: int = 0) -> None:
     if param is None:
         if not optional:
             raise ValueError(f'Non-optional parameter `{param_name}` was set to None.')
         return
     if not isinstance(param, param_type):
-        if isinstance(param_type, Type):
+        if isinstance(param_type, type):
             type_names: str = f'`{param_type.__name__}`'
         else:
             type_names: str = ' or '.join(f'`{typ.__name__}`' for typ in param_type)
@@ -40,22 +42,22 @@ def check_param(param: Any, param_name: str, param_type: Union[Type, Tuple[Type,
 class FixedOffset(tzinfo):
     """Fixed offset from UTC."""
 
-    def __init__(self, offset: Union[timedelta, int], name: str) -> None:
+    def __init__(self, offset: timedelta | int, name: str) -> None:
         if isinstance(offset, timedelta):
             self.offset: timedelta = offset
         else:
             self.offset: timedelta = timedelta(minutes=offset)
         self._name = name
 
-    def tzname(self, dt: Optional[datetime]) -> str:
+    def tzname(self, dt: datetime | None) -> str:
         # pylint: disable=unused-argument
         return self._name
 
-    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+    def utcoffset(self, dt: datetime | None) -> timedelta:
         # pylint: disable=unused-argument
         return self.offset
 
-    def dst(self, dt: Optional[datetime]) -> timedelta:
+    def dst(self, dt: datetime | None) -> timedelta:
         # pylint: disable=unused-argument
         return timedelta(0)
 
@@ -95,7 +97,7 @@ def encode_user_data(user_data: bytes, data_len: int) -> bytes:
     return pack('!B', data_len) + user_data
 
 
-def split_sms(text: str, encoding: str = '') -> List[bytes]:
+def split_sms(text: str, encoding: str = '') -> list[bytes]:
     if not encoding:
         encoding = detect_format(text)
 
@@ -114,9 +116,9 @@ def split_sms(text: str, encoding: str = '') -> List[bytes]:
             # Fits in one SMS
             return [encode_user_data(text_bytes, total_len)]
 
-    pdu_msgs: List[bytes]
+    pdu_msgs: list[bytes]
     if encoding == 'gsm0338':
-        text_msgs: List[str] = []
+        text_msgs: list[str] = []
         start: int = 0
         end: int = MAX_SM_SIZE
         while start < total_len:
@@ -137,11 +139,11 @@ def split_sms(text: str, encoding: str = '') -> List[bytes]:
         end: int = MAX_SM_SIZE
         while start < total_len:
             if end - start == MAX_SM_SIZE:
-                end_byte: int = text_bytes[end - 2]  # type: ignore ; must be bound
+                end_byte: int = text_bytes[end - 2]
                 if 0xD8 <= end_byte <= 0xDB:
                     # UTF-16 high surrogate, must not unpair it from low surrogate
                     end -= 2
-            pdu_msgs.append(text_bytes[start:end])  # type: ignore ; must be bound
+            pdu_msgs.append(text_bytes[start:end])
             start = end
             end += MAX_SM_SIZE
             if end > total_len:
@@ -150,7 +152,7 @@ def split_sms(text: str, encoding: str = '') -> List[bytes]:
     return pdu_msgs
 
 
-def split_sms_udh(text: str, encoding: str = '', csms_ref: Optional[int] = None) -> List[bytes]:
+def split_sms_udh(text: str, encoding: str = '', csms_ref: int | None = None) -> list[bytes]:
     # If CSMS reference number is larger than 255, it will take two bytes
     if csms_ref is None:
         csms_ref = randint(0x00, 0xFF)
@@ -185,7 +187,7 @@ def split_sms_udh(text: str, encoding: str = '', csms_ref: Optional[int] = None)
         # as each char in UCS2 takes two bytes, so total number of bytes must be even
         len_without_udh: int = MAX_OCTET_SIZE - udh_len - 1 - ((udh_len + 1) % 2)
 
-    pdu_msgs: List[bytes] = []
+    pdu_msgs: list[bytes] = []
     udh: bytearray = bytearray()
     udh.append(udh_len)
     udh.append(ie_id)
@@ -197,7 +199,7 @@ def split_sms_udh(text: str, encoding: str = '', csms_ref: Optional[int] = None)
         udh.append(csms_ref)
 
     if encoding == 'gsm0338':
-        text_msgs: List[str] = []
+        text_msgs: list[str] = []
         start: int = 0
         end: int = len_without_udh
         while start < total_len:
@@ -219,16 +221,16 @@ def split_sms_udh(text: str, encoding: str = '', csms_ref: Optional[int] = None)
             udh[udh_len] = index + 1
             pdu_msgs.append(bytes(udh) + msg_bytes)
     else:
-        byte_msgs: List[bytes] = []
+        byte_msgs: list[bytes] = []
         start: int = 0
         end: int = len_without_udh
         while start < total_len:
             if end - start == len_without_udh:
-                end_byte: int = text_bytes[end - 2]  # type: ignore ; must be bound
+                end_byte: int = text_bytes[end - 2]
                 if 0xD8 <= end_byte <= 0xDB:
                     # UTF-16 high surrogate, must not unpair it from low surrogate
                     end -= 2
-            byte_msgs.append(text_bytes[start:end])  # type: ignore ; must be bound
+            byte_msgs.append(text_bytes[start:end])
             start = end
             end += len_without_udh
             if end > total_len:

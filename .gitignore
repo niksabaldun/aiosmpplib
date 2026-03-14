@@ -1,8 +1,8 @@
-.idea
-__pycache__
-*.egg-info
-aiosmpplib.code-workspace
-upload_to_pypi
-.vscode/settings.json
-Makefile
-dist
+**/__pycache__
+.venv
+.vscode
+.ruff_cache
+*.code-workspace
+.gitignore
+.env
+publish.sh

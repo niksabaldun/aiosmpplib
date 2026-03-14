@@ -164,14 +164,14 @@ Sending messages is a lot more involved.
    .. code-block:: python
 
        {
-           'id': str # Message ID allocated by the SMSC when submitted.
-           'sub': int # Number of short messages originally submitted.
-           'dlvrd': int # Number of short messages delivered.
-           'submit date': datetime # The time and date at which the message was submitted.
-           'done date': datetime # The time and date at which the message reached its final state.
-           'stat': str # The final status of the message.
-           'err': int # Network specific error code or an SMSC error code.
-           'text': str # The first 20 characters of the short message.
+           'id': str  # Message ID allocated by the SMSC when submitted.
+           'sub': int  # Number of short messages originally submitted.
+           'dlvrd': int  # Number of short messages delivered.
+           'submit date':  datetime # The time and date at which the message was submitted.
+           'done date':  datetime # The time and date at which the message reached its final state.
+           'stat': str  # The final status of the message.
+           'err': int  # Network specific error code or an SMSC error code.
+           'text': str  # The first 20 characters of the short message.
        }
 
    The ``err`` parameter should be 0 if no error occured.
@@ -193,6 +193,7 @@ ____________________________
 
 .. code-block:: python
 
+    from datetime import datetime
     from aiosmpplib import AbstractHook, SmppCommandStatus
     from aiosmpplib import DeliverSm, SubmitSm, SubmitSmResp, GenericNack, SmppMessage, Trackable
 
@@ -203,7 +204,7 @@ ____________________________
             # Save data to database
 
         async def sending(self, smpp_message: SmppMessage, pdu: bytes, client_id: str) -> None:
-            # Called for every sent message, includion individual segments of a segmented SubmitSM
+            # Called for every sent message, including individual segments of a segmented SubmitSM
             pass  # Or trace log
 
         async def received(self, smpp_message: Optional[SmppMessage], pdu: bytes,
@@ -222,7 +223,7 @@ ____________________________
             elif isinstance(smpp_message, DeliverSm):
                 if smpp_message.is_receipt():
                     # This is a delivery receipt
-                    receipt: Dict[str, Any] = smpp_message.parse_receipt()
+                    receipt: dict[str, str | int | datetime] = smpp_message.parse_receipt()
                     final_status: str = receipt.get('stat', '')
                     msg: str
                     if final_status == 'DELIVRD':

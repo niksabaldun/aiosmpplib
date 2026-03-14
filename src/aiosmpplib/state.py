@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from struct import pack
 from enum import IntEnum, auto
-from typing import Dict, Type, Union
-from .utils import check_param
+from struct import pack
 
+from .utils import check_param
 
 # SMPP optional tag constants. See section 5.3.2 of SMPP ver 3.4 spec document.
 
@@ -140,7 +139,7 @@ ITS_REPLY_TYPE = 0x1380
 ITS_SESSION_INFO = 0x1383
 
 
-def tag_data_type(tag_code: int) -> Type:
+def tag_data_type(tag_code: int) -> type:
     if tag_code in (0x0005, 0x0006, 0x0007, 0x0008, 0x000D, 0x000E, 0x000F, 0x0010, 0x0017,
                     0x0019, 0x0030, 0x0201, 0x0204, 0x0205, 0x020A, 0x020B, 0x020C, 0x020D,
                     0x020E, 0x020F, 0x0210, 0x0302, 0x0304, 0x0420, 0x0421, 0x0422, 0x0425,
@@ -184,7 +183,7 @@ class SmppCommand(IntEnum):
     DATA_SM = 0x00000103
     DATA_SM_RESP = 0x80000103
 
-COMMAND_RESPONSE_MAP: Dict[SmppCommand, SmppCommand] = {
+COMMAND_RESPONSE_MAP: dict[SmppCommand, SmppCommand] = {
     SmppCommand.BIND_RECEIVER: SmppCommand.BIND_RECEIVER_RESP,
     SmppCommand.BIND_TRANSMITTER: SmppCommand.BIND_TRANSMITTER_RESP,
     SmppCommand.BIND_TRANSCEIVER: SmppCommand.BIND_TRANSCEIVER_RESP,
@@ -198,7 +197,7 @@ COMMAND_RESPONSE_MAP: Dict[SmppCommand, SmppCommand] = {
     SmppCommand.SUBMIT_MULTI: SmppCommand.SUBMIT_MULTI_RESP,
     SmppCommand.DATA_SM: SmppCommand.DATA_SM_RESP,
 }
-RESPONSE_COMMAND_MAP: Dict[SmppCommand, SmppCommand] = {resp: comm for comm, resp
+RESPONSE_COMMAND_MAP: dict[SmppCommand, SmppCommand] = {resp: comm for comm, resp
                                                         in COMMAND_RESPONSE_MAP.items()}
 
 DLR_ERROR_NO_ERROR = 0
@@ -252,7 +251,7 @@ DLR_ERROR_BLACKLISTED_RECEIVER = 997
 DLR_ERROR_NO_ROUTE = 998
 DLR_ERROR_REPEATED_SUBMISSION = 999
 
-DLR_ERROR: Dict[int, str] = {
+DLR_ERROR: dict[int, str] = {
     DLR_ERROR_NO_ERROR: 'No error',
     DLR_ERROR_UNKNOWN_SUBSCRIBER: 'Unknown subscriber',
     DLR_ERROR_ILLEGAL_SUBSCRIBER: 'Illegal subscriber',
@@ -576,7 +575,7 @@ class SmppDataCoding(IntEnum):
 
 
 @dataclass
-class OptionalParam():
+class OptionalParam:
     '''
     A SMPP optional parameter.
 
@@ -588,7 +587,7 @@ class OptionalParam():
     see section 5.3.2 of SMPP ver 3.4 spec document.
     '''
     tag: int
-    value: Union[int, str, bool]
+    value: int | str | bool
 
     # see section 5.3.2 of SMPP ver 3.4 spec document.
     # All optional parameters have the following general TLV (Tag, Length, Value) format.
@@ -683,14 +682,14 @@ class OptionalParam():
         '''
 
         length: int = self.length
-        if tag_data_type(self.tag) == int:
-            int_format: Dict[int, str] = {
+        if tag_data_type(self.tag) is int:
+            int_format: dict[int, str] = {
                 1: '!HHB', # unsigned char
                 2: '!HHH', # unsigned short
                 4: '!HHI', # unsigned int
             }
             return pack(int_format[length], self.tag, length, self.value)
-        if tag_data_type(self.tag) == str:
+        if tag_data_type(self.tag) is str:
             assert isinstance(self.value, str) # For linters
             val: bytes = self.value.encode('ascii') # Octet String
             if self.tag in (ADDITIONAL_STATUS_INFO_TEXT, RECEIPTED_MESSAGE_ID):
@@ -737,7 +736,7 @@ class NPI(IntEnum):
 
 
 @dataclass
-class PhoneNumber():
+class PhoneNumber:
     '''
     SMPP phone number representation.
     '''
@@ -752,7 +751,7 @@ class PhoneNumber():
 
 
 @dataclass
-class PduHeader():
+class PduHeader:
     '''
     PDU header representation
     '''

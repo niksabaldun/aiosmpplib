@@ -1,61 +1,83 @@
+import sys
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from unittest.mock import patch
+
 import pytest
+
+from aiosmpplib import (
+    NPI,
+    TON,
+    BindReceiver,
+    BindReceiverResp,
+    BindTransceiver,
+    BindTransceiverResp,
+    BindTransmitter,
+    BindTransmitterResp,
+    DeliverSm,
+    DeliverSmResp,
+    EnquireLink,
+    EnquireLinkResp,
+    GenericNack,
+    OptionalParam,
+    PduHeader,
+    PhoneNumber,
+    SmppMessage,
+    SubmitSm,
+    SubmitSmResp,
+    Unbind,
+    UnbindResp,
+    json_decode,
+    json_encode,
+)
 from aiosmpplib.protocol import DEFAULT_ENCODING, SMPP_VERSION_3_4
-from aiosmpplib import json_decode, json_encode
-from aiosmpplib import PhoneNumber, TON, NPI, OptionalParam
-from aiosmpplib import (SubmitSm, SubmitSmResp, DeliverSm, DeliverSmResp, Unbind, UnbindResp,
-                        BindTransceiver, BindTransceiverResp, BindReceiver, BindReceiverResp,
-                        BindTransmitter, BindTransmitterResp, EnquireLink, EnquireLinkResp,
-                        SmppMessage, PduHeader, GenericNack)
 from aiosmpplib.state import (
-    DEST_ADDR_SUBUNIT,
-    DEST_NETWORK_TYPE,
-    DEST_BEARER_TYPE,
-    DEST_TELEMATICS_ID,
-    SOURCE_ADDR_SUBUNIT,
-    SOURCE_NETWORK_TYPE,
-    SOURCE_BEARER_TYPE,
-    SOURCE_TELEMATICS_ID,
-    QOS_TIME_TO_LIVE,
-    PAYLOAD_TYPE,
     ADDITIONAL_STATUS_INFO_TEXT,
-    RECEIPTED_MESSAGE_ID,
-    MS_MSG_WAIT_FACILITIES,
-    PRIVACY_INDICATOR,
-    SOURCE_SUBADDRESS,
-    DEST_SUBADDRESS,
-    USER_MESSAGE_REFERENCE,
-    USER_RESPONSE_CODE,
-    SOURCE_PORT,
-    DESTINATION_PORT,
-    SAR_MSG_REF_NUM,
-    LANGUAGE_INDICATOR,
-    SAR_TOTAL_SEGMENTS,
-    SAR_SEGMENT_SEQNUM,
-    SC_INTERFACE_VERSION,
-    CALLBACK_NUM_PRES_IND,
-    CALLBACK_NUM_ATAG,
-    NUMBER_OF_MESSAGES,
-    CALLBACK_NUM,
-    DPF_RESULT,
-    SET_DPF,
-    MS_AVAILABILITY_STATUS,
-    NETWORK_ERROR_CODE,
-    MESSAGE_PAYLOAD,
-    DELIVERY_FAILURE_REASON,
-    MORE_MESSAGES_TO_SEND,
-    MESSAGE_STATE,
-    USSD_SERVICE_OP,
-    DISPLAY_TIME,
-    SMS_SIGNAL,
-    MS_VALIDITY,
     ALERT_ON_MESSAGE_DELIVERY,
+    CALLBACK_NUM,
+    CALLBACK_NUM_ATAG,
+    CALLBACK_NUM_PRES_IND,
+    DELIVERY_FAILURE_REASON,
+    DEST_ADDR_SUBUNIT,
+    DEST_BEARER_TYPE,
+    DEST_NETWORK_TYPE,
+    DEST_SUBADDRESS,
+    DEST_TELEMATICS_ID,
+    DESTINATION_PORT,
+    DISPLAY_TIME,
+    DPF_RESULT,
     ITS_REPLY_TYPE,
     ITS_SESSION_INFO,
+    LANGUAGE_INDICATOR,
+    MESSAGE_PAYLOAD,
+    MESSAGE_STATE,
+    MORE_MESSAGES_TO_SEND,
+    MS_AVAILABILITY_STATUS,
+    MS_MSG_WAIT_FACILITIES,
+    MS_VALIDITY,
+    NETWORK_ERROR_CODE,
+    NUMBER_OF_MESSAGES,
+    PAYLOAD_TYPE,
+    PRIVACY_INDICATOR,
+    QOS_TIME_TO_LIVE,
+    RECEIPTED_MESSAGE_ID,
+    SAR_MSG_REF_NUM,
+    SAR_SEGMENT_SEQNUM,
+    SAR_TOTAL_SEGMENTS,
+    SC_INTERFACE_VERSION,
+    SET_DPF,
+    SMS_SIGNAL,
+    SOURCE_ADDR_SUBUNIT,
+    SOURCE_BEARER_TYPE,
+    SOURCE_NETWORK_TYPE,
+    SOURCE_PORT,
+    SOURCE_SUBADDRESS,
+    SOURCE_TELEMATICS_ID,
+    USER_MESSAGE_REFERENCE,
+    USER_RESPONSE_CODE,
+    USSD_SERVICE_OP,
     tag_data_type,
 )
-
+from aiosmpplib.utils import AnyDict
 
 BIND_TRANSCEIVER = BindTransceiver(
     system_id='testuser',
@@ -106,7 +128,7 @@ DELIVER_SM: DeliverSm = DeliverSm(
     destination=PhoneNumber('+123135654618'),
     sequence_num=1,
 )
-TEST_MESSAGES: List[Tuple[str, SmppMessage]] = [
+TEST_MESSAGES: list[tuple[str, SmppMessage]] = [
     ('BindTransceiver', BIND_TRANSCEIVER),
     ('BindTransceiverResp', BIND_TRANSCEIVER_RESP),
     ('BindTransmitter', BIND_TRANSMITTER),
@@ -125,7 +147,7 @@ TEST_MESSAGES: List[Tuple[str, SmppMessage]] = [
     ('UnbindResp', UnbindResp(1)),
     ('GenericNack', GenericNack(1)),
 ]
-STANDARD_TAGS: Tuple[int, ...] = (
+STANDARD_TAGS: tuple[int, ...] = (
     DEST_ADDR_SUBUNIT,
     DEST_NETWORK_TYPE,
     DEST_BEARER_TYPE,
@@ -172,6 +194,11 @@ STANDARD_TAGS: Tuple[int, ...] = (
     ITS_SESSION_INFO,
 )
 
+def test_orjson_availability():
+    import orjson
+    orjson.dumps({})
+
+
 @pytest.mark.parametrize('desc,message', TEST_MESSAGES)
 def test_pdu_serialization(desc: str, message: SmppMessage):
     pdu: bytes = message.pdu()
@@ -181,10 +208,21 @@ def test_pdu_serialization(desc: str, message: SmppMessage):
 
 
 @pytest.mark.parametrize('desc,message', TEST_MESSAGES)
-def test_json_serialization(desc: str, message: SmppMessage):
+def test_orjson_serialization(desc: str, message: SmppMessage):
     json_data: str = json_encode(message)
     decoded_message: SmppMessage = json_decode(json_data)
     assert message == decoded_message, desc + ' incorrectly decoded from JSON'
+
+
+@pytest.mark.parametrize('desc,message', TEST_MESSAGES)
+def test_json_serialization(desc: str, message: SmppMessage):
+    with patch.dict(sys.modules, {'orjson': None}):
+        with pytest.raises(ImportError):
+            test_orjson_availability()
+        json_data: str = json_encode(message)
+        decoded_message: SmppMessage = json_decode(json_data)
+        assert message == decoded_message, desc + ' incorrectly decoded from JSON'
+
 
 def test_delivery_receipt():
     msg_id: str = 'FE456A00'
@@ -194,7 +232,7 @@ def test_delivery_receipt():
     stat: str = 'DELIVRD'
     text: str = '????????????????????'
 
-    receipt: Dict[str, Any] = {
+    receipt: dict[str, str | int | datetime] = {
         'id': msg_id,
         'sub': 1,
         'dlvrd': 1,
@@ -222,7 +260,7 @@ class BadArg:
     pass
 
 
-DELIVER_SM_PARAMS: Tuple[str, ...] = (
+DELIVER_SM_PARAMS: tuple[str, ...] = (
     'sequence_num',
     'log_id',
     'extra_data',
@@ -248,14 +286,14 @@ DELIVER_SM_PARAMS: Tuple[str, ...] = (
 
 @pytest.mark.parametrize('param', DELIVER_SM_PARAMS)
 def test_bad_args(param: str):
-    _all_args = {
+    _all_args: AnyDict = {
         'short_message': 'Hello, thanks for shopping with us.',
         'source': PhoneNumber('254722111111'),
         'destination': PhoneNumber('254722999999'),
     }
     _all_args[param] = BadArg()
     with pytest.raises(ValueError):
-        DeliverSm(**_all_args)
+        DeliverSm(**_all_args)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize('tag', STANDARD_TAGS)

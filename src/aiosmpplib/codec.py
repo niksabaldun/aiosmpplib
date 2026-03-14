@@ -1,10 +1,9 @@
-from codecs import Codec, CodecInfo, lookup, utf_16_be_decode, utf_16_be_encode
 from abc import abstractmethod
+from codecs import Codec, CodecInfo, lookup, utf_16_be_decode, utf_16_be_encode
 from struct import pack
-from typing import Dict, List, Optional, Tuple
 
 # GSM 03.38 -> unicode
-GSM_BASIC_DECODE_MAP: Dict[int, str] = {
+GSM_BASIC_DECODE_MAP: dict[int, str] = {
     0x00: '\u0040', # COMMERCIAL AT
     0x01: '\u00A3', # POUND SIGN
     0x02: '\u0024', # DOLLAR SIGN
@@ -135,7 +134,7 @@ GSM_BASIC_DECODE_MAP: Dict[int, str] = {
 }
 
 # GSM 03.38 escaped characters -> unicode
-GSM_EXTENDED_DECODE_MAP: Dict[int, str] = {
+GSM_EXTENDED_DECODE_MAP: dict[int, str] = {
     0x0A: '\u000C', # FORM FEED
     0x14: '\u005E', # CIRCUMFLEX ACCENT
     0x28: '\u007B', # LEFT CURLY BRACKET
@@ -152,7 +151,7 @@ GSM_EXTENDED_DECODE_MAP: Dict[int, str] = {
 # important to ensure exact UTF-8 -> GSM -> UTF-8 equivalence, such as when
 # humans read and write SMS. But for USSD and other M2M applications it's
 # important to ensure the conversion is exact.
-GSM_REPLACE_ENCODE_MAP: Dict[str, int] = {
+GSM_REPLACE_ENCODE_MAP: dict[str, int] = {
     '\u00E7': 0x09, # LATIN SMALL LETTER C WITH CEDILLA
     '\u0391': 0x41, # GREEK CAPITAL LETTER ALPHA
     '\u0392': 0x42, # GREEK CAPITAL LETTER BETA
@@ -170,8 +169,8 @@ GSM_REPLACE_ENCODE_MAP: Dict[str, int] = {
     '\u0396': 0x5A, # GREEK CAPITAL LETTER ZETA
 }
 
-GSM_BASIC_ENCODE_MAP: Dict[str, int] = {char: code for code, char in GSM_BASIC_DECODE_MAP.items()}
-GSM_EXTENDED_ENCODE_MAP: Dict[str, int] = {char: code
+GSM_BASIC_ENCODE_MAP: dict[str, int] = {char: code for code, char in GSM_BASIC_DECODE_MAP.items()}
+GSM_EXTENDED_ENCODE_MAP: dict[str, int] = {char: code
                                            for code, char in GSM_EXTENDED_DECODE_MAP.items()}
 
 ESCAPE: int = 0x1B
@@ -215,17 +214,17 @@ class GSM7BitCodec(SmsCodec):
         return 'gsm0338'
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
-    def encode(self, input: str, errors: str='strict') -> Tuple[bytes, int]:
+    def encode(self, input: str, errors: str='strict') -> tuple[bytes, int]:
         if not isinstance(input, str):
             raise TypeError('Expected str input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 
-        gsm_codes: List[int] = self.to_gsm_codes(input, errors)
+        gsm_codes: list[int] = self.to_gsm_codes(input, errors)
         return pack('!' + 'B' * len(gsm_codes), *gsm_codes), len(input)
 
 
-    def decode(self, input: bytes, errors: str='strict') -> Tuple[str, int]:
+    def decode(self, input: bytes, errors: str='strict') -> tuple[str, int]:
         if not isinstance(input, bytes):
             raise TypeError('Expected bytes input')
         if errors not in ('strict', 'replace', 'ignore'):
@@ -259,7 +258,7 @@ class GSM7BitCodec(SmsCodec):
         return result, consumed
 
 
-    def _decode_char(self, char_code: int, escaped: bool) -> Tuple[str, bool]:
+    def _decode_char(self, char_code: int, escaped: bool) -> tuple[str, bool]:
         if char_code == ESCAPE:
             return '', True
         if escaped:
@@ -267,10 +266,10 @@ class GSM7BitCodec(SmsCodec):
         return GSM_BASIC_DECODE_MAP.get(char_code, ''), False
 
 
-    def to_gsm_codes(self, text: str, errors: str='strict') -> List[int]:
-        gsm_codes: List[int] = []
+    def to_gsm_codes(self, text: str, errors: str='strict') -> list[int]:
+        gsm_codes: list[int] = []
         for pos, char in enumerate(text):
-            char_code: Optional[int] = GSM_BASIC_ENCODE_MAP.get(char)
+            char_code: int | None = GSM_BASIC_ENCODE_MAP.get(char)
             if char_code is not None:
                 gsm_codes.append(char_code)
             else:
@@ -309,13 +308,13 @@ class GSM7BitPackedCodec(GSM7BitCodec):
         return 'gsm0338_packed'
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
-    def encode(self, input: str, errors: str='strict') -> Tuple[bytes, int]:
+    def encode(self, input: str, errors: str='strict') -> tuple[bytes, int]:
         if not isinstance(input, str):
             raise TypeError('Expected str input')
         if errors not in ('strict', 'replace', 'ignore'):
             raise ValueError(f'Unknown error handling {errors}.')
 
-        gsm_codes: List[int] = self.to_gsm_codes(input, errors)
+        gsm_codes: list[int] = self.to_gsm_codes(input, errors)
 
         # Pack septets to octets
         msg_len: int = len(gsm_codes) * 7 # Required bits
@@ -337,7 +336,7 @@ class GSM7BitPackedCodec(GSM7BitCodec):
         return bytes(result), len(input)
 
 
-    def decode(self, input: bytes, errors: str='strict') -> Tuple[str, int]:
+    def decode(self, input: bytes, errors: str='strict') -> tuple[str, int]:
         if not isinstance(input, bytes):
             raise TypeError('Expected bytes input')
         if errors not in ('strict', 'replace', 'ignore'):
@@ -389,14 +388,14 @@ class UCS2Codec(SmsCodec):
         return 'ucs2'
 
     # pylint: disable=redefined-builtin; wrongly named in superclass
-    def encode(self, input: str, errors: str = 'strict') -> Tuple[bytes, int]:
+    def encode(self, input: str, errors: str = 'strict') -> tuple[bytes, int]:
         return utf_16_be_encode(input, errors)
 
-    def decode(self, input: bytes, errors: str = 'strict') -> Tuple[str, int]:
+    def decode(self, input: bytes, errors: str = 'strict') -> tuple[str, int]:
         return utf_16_be_decode(input, errors)
 
 
-INBUILT_CODECS: Dict[str, CodecInfo] = {
+INBUILT_CODECS: dict[str, CodecInfo] = {
     GSM7BitCodec.get_name(): GSM7BitCodec.get_codec_info(),
     GSM7BitPackedCodec.get_name(): GSM7BitPackedCodec.get_codec_info(),
     UCS2Codec.get_name(): UCS2Codec.get_codec_info(),
@@ -405,8 +404,8 @@ INBUILT_CODECS: Dict[str, CodecInfo] = {
 # We don't register codecs with Python registry to avoid conflict with other libraries
 # which may register the same codecs. Instead, we provide our own encode and decode methods.
 # We also get the ability to have per-client custom codecs.
-def find_codec_info(encoding: str, custom_codecs: Optional[Dict[str, CodecInfo]]=None) -> CodecInfo:
-    codec_info: Optional[CodecInfo] = None
+def find_codec_info(encoding: str, custom_codecs: dict[str, CodecInfo] | None=None) -> CodecInfo:
+    codec_info: CodecInfo | None = None
     if custom_codecs:
         codec_info = custom_codecs.get(encoding)
     if not codec_info:
