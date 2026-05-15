@@ -887,7 +887,7 @@ class ESME:
         bind_command: SmppCommand = self.bind_mode.smpp_command
         bind_request_cls: type[SmppMessage] = MESSAGE_TYPE_MAP[bind_command]
         # BindTransmitter and BindReceiver are subclasses of BindTransceiver
-        assert isinstance(bind_request_cls, BindTransceiver)
+        assert issubclass(bind_request_cls, BindTransceiver)
         bind_request: SmppMessage = bind_request_cls(
             system_id=self.system_id,
             password=self.password,
